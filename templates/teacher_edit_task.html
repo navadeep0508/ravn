@@ -1,0 +1,321 @@
+{% extends "teacher_base.html" %}
+
+{% block page_title %}Edit Task - {{ task.title }}{% endblock %}
+
+{% block teacher_content %}
+<div class="max-w-3xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800">Edit Task</h1>
+            <p class="text-gray-600">Update task information for "{{ task.title }}"</p>
+        </div>
+        <a href="{{ url_for('admin_module_tasks', module_id=module.id) }}"
+           class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+            <i class="fas fa-arrow-left mr-2"></i>Back to Tasks
+        </a>
+    </div>
+
+    <!-- Module and Course Info -->
+    <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+        <div class="flex items-center">
+            <div class="w-16 h-16 bg-gradient-to-br from-green-400 to-green-600 rounded-lg flex items-center justify-center mr-4">
+                <i class="fas fa-tasks text-white text-xl"></i>
+            </div>
+            <div>
+                <h3 class="font-semibold text-gray-800">{{ task.title }}</h3>
+                <p class="text-sm text-gray-600">{{ course.title }} • {{ module.title }} • Task {{ task.order_index }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Task Form -->
+    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-800">Task Information</h3>
+        </div>
+
+        <form method="POST" action="{{ url_for('admin_edit_task', task_id=task.id) }}" class="p-6 space-y-6">
+            <!-- Task Type -->
+            <div>
+                <label for="type" class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-tag mr-2"></i>Task Type
+                </label>
+                <select
+                    id="type"
+                    name="type"
+                    required
+                    onchange="showTaskTypeFields()"
+                    class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all bg-white"
+                >
+                    <option value="reading" {% if task.type == 'reading' %}selected{% endif %}>Reading</option>
+                    <option value="assignment" {% if task.type == 'assignment' %}selected{% endif %}>Assignment</option>
+                    <option value="quiz" {% if task.type == 'quiz' %}selected{% endif %}>Quiz</option>
+                    <option value="discussion" {% if task.type == 'discussion' %}selected{% endif %}>Discussion</option>
+                </select>
+            </div>
+
+            <!-- Task Title -->
+            <div>
+                <label for="title" class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-heading mr-2"></i>Task Title
+                </label>
+                <input
+                    type="text"
+                    id="title"
+                    name="title"
+                    value="{{ task.title }}"
+                    required
+                    class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                    placeholder="e.g., Read Chapter 1, Complete Exercise 1"
+                >
+            </div>
+
+            <!-- Task Description -->
+            <div>
+                <label for="description" class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-align-left mr-2"></i>Description
+                </label>
+                <textarea
+                    id="description"
+                    name="description"
+                    required
+                    rows="4"
+                    class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                    placeholder="Describe what students need to do for this task..."
+                >{{ task.description }}</textarea>
+            </div>
+
+            <!-- Order and Time -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="order_index" class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-sort-numeric-down mr-2"></i>Order
+                    </label>
+                    <input
+                        type="number"
+                        id="order_index"
+                        name="order_index"
+                        min="1"
+                        value="{{ task.order_index }}"
+                        required
+                        class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                    >
+                    <p class="text-xs text-gray-500 mt-1">Task position in module sequence</p>
+                </div>
+
+                <div>
+                    <label for="estimated_time" class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-clock mr-2"></i>Estimated Time
+                    </label>
+                    <input
+                        type="text"
+                        id="estimated_time"
+                        name="estimated_time"
+                        value="{{ task.estimated_time }}"
+                        class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                        placeholder="e.g., 30 minutes, 2 hours"
+                    >
+                </div>
+            </div>
+
+            <!-- Resource Link -->
+            <div>
+                <label for="resource_link" class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-link mr-2"></i>Resource Link (Optional)
+                </label>
+                <input
+                    type="url"
+                    id="resource_link"
+                    name="resource_link"
+                    value="{{ task.resource_link or '' }}"
+                    class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                    placeholder="https://example.com/resource"
+                >
+            </div>
+
+            <!-- Mandatory Toggle -->
+            <div class="flex items-center">
+                <input
+                    type="checkbox"
+                    id="is_mandatory"
+                    name="is_mandatory"
+                    class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                    {% if task.is_mandatory %}checked{% endif %}
+                >
+                <label for="is_mandatory" class="ml-2 block text-sm text-gray-900">
+                    This task is mandatory for course completion
+                </label>
+            </div>
+
+            <!-- Task Type Specific Fields (Hidden by default, shown by JavaScript) -->
+            <div id="assignment-fields" class="{% if task.type != 'assignment' %}hidden {% endif %}space-y-4">
+                <h4 class="text-md font-medium text-gray-800">Assignment Settings</h4>
+                <div>
+                    <label for="assignment_instructions" class="block text-sm font-medium text-gray-700 mb-2">
+                        Assignment Instructions
+                    </label>
+                    <textarea
+                        id="assignment_instructions"
+                        name="assignment_instructions"
+                        rows="3"
+                        class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                        placeholder="Detailed instructions for the assignment..."
+                    >{{ task.assignment_instructions or '' }}</textarea>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="due_date" class="block text-sm font-medium text-gray-700 mb-2">
+                            Due Date (Optional)
+                        </label>
+                        <input
+                            type="datetime-local"
+                            id="due_date"
+                            name="due_date"
+                            value="{{ task.due_date or '' }}"
+                            class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                        >
+                    </div>
+                    <div>
+                        <label for="max_file_size" class="block text-sm font-medium text-gray-700 mb-2">
+                            Max File Size (MB)
+                        </label>
+                        <input
+                            type="number"
+                            id="max_file_size"
+                            name="max_file_size"
+                            min="1"
+                            max="100"
+                            value="{{ task.max_file_size or 10 }}"
+                            class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                        >
+                    </div>
+                </div>
+                <div class="flex items-center">
+                    <input
+                        type="checkbox"
+                        id="allow_late_submissions"
+                        name="allow_late_submissions"
+                        class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        {% if task.allow_late_submissions %}checked{% endif %}
+                    >
+                    <label for="allow_late_submissions" class="ml-2 block text-sm text-gray-900">
+                        Allow late submissions
+                    </label>
+                </div>
+            </div>
+
+            <div id="reading-fields" class="{% if task.type != 'reading' %}hidden {% endif %}space-y-4">
+                <h4 class="text-md font-medium text-gray-800">Reading Settings</h4>
+                <div>
+                    <label for="reading_instructions" class="block text-sm font-medium text-gray-700 mb-2">
+                        Reading Instructions
+                    </label>
+                    <textarea
+                        id="reading_instructions"
+                        name="reading_instructions"
+                        rows="3"
+                        class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                        placeholder="Instructions for the reading assignment..."
+                    >{{ task.reading_instructions or '' }}</textarea>
+                </div>
+            </div>
+
+            <div id="discussion-fields" class="{% if task.type != 'discussion' %}hidden {% endif %}space-y-4">
+                <h4 class="text-md font-medium text-gray-800">Discussion Settings</h4>
+                <div>
+                    <label for="discussion_prompt" class="block text-sm font-medium text-gray-700 mb-2">
+                        Discussion Prompt
+                    </label>
+                    <textarea
+                        id="discussion_prompt"
+                        name="discussion_prompt"
+                        rows="3"
+                        class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                        placeholder="What should students discuss in this forum?"
+                    >{{ task.discussion_prompt or '' }}</textarea>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="min_posts_required" class="block text-sm font-medium text-gray-700 mb-2">
+                            Minimum Posts Required
+                        </label>
+                        <input
+                            type="number"
+                            id="min_posts_required"
+                            name="min_posts_required"
+                            min="1"
+                            value="{{ task.min_posts_required or 1 }}"
+                            class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                        >
+                    </div>
+                    <div>
+                        <label for="discussion_duration_days" class="block text-sm font-medium text-gray-700 mb-2">
+                            Discussion Duration (Days)
+                        </label>
+                        <input
+                            type="number"
+                            id="discussion_duration_days"
+                            name="discussion_duration_days"
+                            min="1"
+                            value="{{ task.discussion_duration_days or 7 }}"
+                            class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                        >
+                    </div>
+                </div>
+                <div class="flex items-center">
+                    <input
+                        type="checkbox"
+                        id="require_replies"
+                        name="require_replies"
+                        class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        {% if task.require_replies %}checked{% endif %}
+                    >
+                    <label for="require_replies" class="ml-2 block text-sm text-gray-900">
+                        Require replies to other posts
+                    </label>
+                </div>
+            </div>
+
+            <!-- Submit Buttons -->
+            <div class="flex flex-col sm:flex-row gap-3 pt-4">
+                <button
+                    type="submit"
+                    class="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-green-500 to-blue-600 text-white font-semibold rounded-lg shadow-lg hover:opacity-90 transition-opacity"
+                >
+                    <i class="fas fa-save mr-2"></i>Update Task
+                </button>
+                <a href="{{ url_for('admin_module_tasks', module_id=module.id) }}"
+                   class="flex-1 sm:flex-none px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors text-center">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function showTaskTypeFields() {
+    const taskType = document.getElementById('type').value;
+
+    // Hide all task-specific fields
+    document.getElementById('assignment-fields').classList.add('hidden');
+    document.getElementById('reading-fields').classList.add('hidden');
+    document.getElementById('discussion-fields').classList.add('hidden');
+
+    // Show relevant fields based on task type
+    if (taskType === 'assignment') {
+        document.getElementById('assignment-fields').classList.remove('hidden');
+    } else if (taskType === 'reading') {
+        document.getElementById('reading-fields').classList.remove('hidden');
+    } else if (taskType === 'discussion') {
+        document.getElementById('discussion-fields').classList.remove('hidden');
+    }
+}
+
+// Show fields on page load based on current task type
+document.addEventListener('DOMContentLoaded', function() {
+    showTaskTypeFields();
+});
+</script>
+{% endblock %}
