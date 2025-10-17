@@ -185,7 +185,71 @@ def login_required(f):
 @app.route('/')
 def index():
     if 'user_id' in session:
-        return render_template('dashboard.html', username=session.get('username'))
+        user_id = session.get('user_id')
+        username = session.get('username')
+
+        try:
+            # Fetch all courses for recommendations and total count
+            courses_result = supabase.table('courses').select('*').eq('status', 'active').execute()
+            all_courses = courses_result.data if courses_result.data else []
+
+            # Fetch enrolled courses for the user
+            enrolled_courses_result = supabase.table('enrollments').select('course_id, status').eq('student_id', user_id).execute()
+            enrolled_course_ids = [e['course_id'] for e in enrolled_courses_result.data] if enrolled_courses_result.data else []
+
+            # Fetch details of enrolled courses
+            enrolled_course_details = []
+            if enrolled_course_ids:
+                enrolled_details_result = supabase.table('courses').select('*').in_('id', enrolled_course_ids).execute()
+                enrolled_course_details = enrolled_details_result.data if enrolled_details_result.data else []
+
+            # Calculate progress for each enrolled course
+            total_completion_percentage = 0
+            completed_courses_count = 0
+            for course in enrolled_course_details:
+                # This is a simplified progress calculation. A more detailed one would be needed for accuracy.
+                progress_result = supabase.table('quiz_attempts').select('score').eq('student_id', user_id).eq('course_id', course['id']).execute()
+                scores = [p['score'] for p in progress_result.data] if progress_result.data else []
+                course_progress = round(sum(scores) / len(scores)) if scores else 0 # Simplified logic
+                course['progress'] = course_progress
+                total_completion_percentage += course_progress
+                if course_progress >= 100:
+                    completed_courses_count += 1
+
+            # Calculate average score from all quiz attempts
+            attempts_result = supabase.table('quiz_attempts').select('score').eq('student_id', user_id).execute()
+            all_scores = [a['score'] for a in attempts_result.data] if attempts_result.data else []
+            average_score = round(sum(all_scores) / len(all_scores)) if all_scores else 0
+
+            # Calculate overall completion rate
+            completion_rate = round(total_completion_percentage / len(enrolled_course_details)) if enrolled_course_details else 0
+
+            # Dummy data for other metrics, as logic is not fully implemented
+            total_hours = sum([int(c.get('duration', '0').split(' ')[0]) for c in enrolled_course_details if c.get('duration')]) # Simplistic
+            leaderboard_rank = 1 # Placeholder
+            upcoming_tasks = [] # Placeholder
+            recent_activity = [] # Placeholder
+
+            return render_template('dashboard.html',
+                                 username=username,
+                                 courses=all_courses,
+                                 enrolled_courses=len(enrolled_course_ids),
+                                 completed_courses=completed_courses_count,
+                                 total_hours=total_hours,
+                                 enrolled_course_details=enrolled_course_details,
+                                 average_score=average_score,
+                                 completion_rate=completion_rate,
+                                 leaderboard_rank=leaderboard_rank,
+                                 upcoming_tasks=upcoming_tasks,
+                                 recent_activity=recent_activity)
+
+        except Exception as e:
+            import traceback
+            print(f"Error loading dashboard: {str(e)}\n{traceback.format_exc()}")
+            flash('Could not load dashboard data. Please try again later.', 'error')
+            # Render a fallback dashboard with minimal data
+            return render_template('dashboard.html', username=username, courses=[], enrolled_courses=0, completed_courses=0, total_hours=0, enrolled_course_details=[], average_score=0, completion_rate=0, leaderboard_rank='N/A', upcoming_tasks=[], recent_activity=[])
+
     return redirect(url_for('login'))
 
 
