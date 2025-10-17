@@ -1,0 +1,278 @@
+<!-- templates/admin_add_quiz.html -->
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold">Add New Quiz</h1>
+        <a href="{{ url_for('admin_module_tasks', module_id=module.id) }}" 
+           class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded">
+            Back to Tasks
+        </a>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <form method="POST" class="space-y-6">
+            <!-- Basic Quiz Info -->
+            <div class="space-y-4">
+                <h2 class="text-xl font-semibold border-b pb-2">Quiz Information</h2>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Title *</label>
+                    <input type="text" name="title" required
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Description</label>
+                    <textarea name="description" rows="2"
+                              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Order Index</label>
+                        <input type="number" name="order_index" value="0" min="0"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                    
+                    <div>
+                        <label class="flex items-center mt-6">
+                            <input type="checkbox" name="is_mandatory" checked 
+                                   class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <span class="ml-2 text-sm text-gray-700">Is Mandatory</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quiz Settings -->
+            <div class="space-y-4 pt-4 border-t">
+                <h2 class="text-xl font-semibold border-b pb-2">Quiz Settings</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Time Limit (minutes)</label>
+                        <input type="number" name="time_limit" value="30" min="1"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Passing Score (%)</label>
+                        <input type="number" name="passing_score" value="70" min="1" max="100"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Max Attempts</label>
+                        <input type="number" name="max_attempts" value="3" min="1"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Question Order</label>
+                    <select name="question_order_type"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="sequential">Sequential</option>
+                        <option value="random">Random</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Instructions</label>
+                    <textarea name="quiz_instructions" rows="3"
+                              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">Please complete the following quiz questions.</textarea>
+                </div>
+            </div>
+
+            <!-- Questions -->
+            <div class="space-y-6 pt-4 border-t" id="questions-container">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-xl font-semibold">Questions</h2>
+                    <button type="button" id="add-question"
+                            class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+                        Add Question
+                    </button>
+                </div>
+
+                <!-- Question template (hidden) -->
+                <template id="question-template">
+                    <div class="question-group bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-medium text-gray-700">Question <span class="question-number">1</span></h3>
+                            <button type="button" 
+                                    class="text-red-600 hover:text-red-800 remove-question">
+                                Remove
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Question Text *</label>
+                                <input type="text" name="question_1" required
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            
+                            <div class="space-y-2">
+                                <label class="block text-sm font-medium text-gray-700">Options *</label>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div class="flex items-center">
+                                        <span class="w-6 text-gray-500">1.</span>
+                                        <input type="text" name="question_1_option_1" required
+                                               class="ml-1 flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    </div>
+                                    <div class="flex items-center">
+                                        <span class="w-6 text-gray-500">2.</span>
+                                        <input type="text" name="question_1_option_2" required
+                                               class="ml-1 flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    </div>
+                                    <div class="flex items-center">
+                                        <span class="w-6 text-gray-500">3.</span>
+                                        <input type="text" name="question_1_option_3"
+                                               class="ml-1 flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    </div>
+                                    <div class="flex items-center">
+                                        <span class="w-6 text-gray-500">4.</span>
+                                        <input type="text" name="question_1_option_4"
+                                               class="ml-1 flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="w-48">
+                                <label class="block text-sm font-medium text-gray-700">Correct Answer</label>
+                                <select name="question_1_correct"
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    <option value="1">Option 1</option>
+                                    <option value="2">Option 2</option>
+                                    <option value="3">Option 3</option>
+                                    <option value="4">Option 4</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- First question (added by default) -->
+                <div class="question-group bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-medium text-gray-700">Question <span class="question-number">1</span></h3>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Question Text *</label>
+                            <input type="text" name="question_1" required
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        
+                        <div class="space-y-2">
+                            <label class="block text-sm font-medium text-gray-700">Options *</label>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div class="flex items-center">
+                                    <span class="w-6 text-gray-500">1.</span>
+                                    <input type="text" name="question_1_option_1" required
+                                           class="ml-1 flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="w-6 text-gray-500">2.</span>
+                                    <input type="text" name="question_1_option_2" required
+                                           class="ml-1 flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="w-6 text-gray-500">3.</span>
+                                    <input type="text" name="question_1_option_3"
+                                           class="ml-1 flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="w-6 text-gray-500">4.</span>
+                                    <input type="text" name="question_1_option_4"
+                                           class="ml-1 flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="w-48">
+                            <label class="block text-sm font-medium text-gray-700">Correct Answer</label>
+                            <select name="question_1_correct"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="1">Option 1</option>
+                                <option value="2">Option 2</option>
+                                <option value="3">Option 3</option>
+                                <option value="4">Option 4</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="flex justify-end space-x-4 pt-4 border-t">
+                <a href="{{ url_for('admin_module_tasks', module_id=module.id) }}"
+                   class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Cancel
+                </a>
+                <button type="submit"
+                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Save Quiz
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const container = document.getElementById('questions-container');
+    const addButton = document.getElementById('add-question');
+    const template = document.getElementById('question-template');
+    let questionCount = 1;  // Start from 1 since we have one question by default
+
+    // Add question button click handler
+    addButton.addEventListener('click', function() {
+        addNewQuestion();
+    });
+
+    // Remove question button handler (delegated)
+    container.addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-question')) {
+            e.target.closest('.question-group').remove();
+            updateQuestionNumbers();
+        }
+    });
+
+    // Add a new question
+    function addNewQuestion() {
+        questionCount++;
+        const newQuestion = template.content.cloneNode(true);
+        
+        // Update question number in the cloned template
+        const questionNumber = newQuestion.querySelector('.question-number');
+        if (questionNumber) {
+            questionNumber.textContent = questionCount;
+        }
+        
+        // Update all input/select names with the new question number
+        newQuestion.querySelectorAll('[name^="question_"]').forEach(input => {
+            input.name = input.name.replace(/question_\d+/, `question_${questionCount}`);
+        });
+        
+        container.insertBefore(newQuestion, addButton.parentElement);
+        updateQuestionNumbers();
+    }
+
+    // Update question numbers
+    function updateQuestionNumbers() {
+        const questions = container.querySelectorAll('.question-group:not(template)');
+        questions.forEach((question, index) => {
+            const number = index + 1;
+            const numberElement = question.querySelector('.question-number');
+            if (numberElement) {
+                numberElement.textContent = number;
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

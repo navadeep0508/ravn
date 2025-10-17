@@ -1,0 +1,549 @@
+{% extends "base.html" %}
+
+{% block title %}{{ task.title }} - {{ module.title }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <nav class="flex" aria-label="Breadcrumb">
+                        <ol class="flex items-center space-x-4">
+                            <li>
+                                <a href="{{ url_for('courses') }}" class="text-gray-500 hover:text-gray-700">
+                                    <i class="fas fa-arrow-left mr-2"></i>Courses
+                                </a>
+                            </li>
+                            <li>
+                                <span class="text-gray-400">/</span>
+                                <a href="{{ url_for('course_detail', course_id=course.id) }}" class="text-gray-500 hover:text-gray-700 ml-4">
+                                    {{ course.title }}
+                                </a>
+                            </li>
+                            <li>
+                                <span class="text-gray-400">/</span>
+                                <a href="{{ url_for('course_modules', course_id=course.id) }}" class="text-gray-500 hover:text-gray-700 ml-4">
+                                    Modules
+                                </a>
+                            </li>
+                            <li>
+                                <span class="text-gray-400">/</span>
+                                <a href="{{ url_for('course_module_tasks', course_id=course.id, module_id=module.id) }}" class="text-gray-500 hover:text-gray-700 ml-4">
+                                    {{ module.title }}
+                                </a>
+                            </li>
+                            <li>
+                                <span class="text-gray-400">/</span>
+                                <span class="text-gray-900 font-medium ml-4">{{ task.title }}</span>
+                            </li>
+                        </ol>
+                    </nav>
+                    <h1 class="text-3xl font-bold text-gray-900 mt-2">{{ task.title }}</h1>
+                    <p class="text-gray-600 mt-1">{{ task.description }}</p>
+                </div>
+                <div class="text-right">
+                    <div class="text-sm text-gray-500">Task Progress</div>
+                    <div class="text-2xl font-bold text-green-600">{{ task_progress.get('completion_percentage', 0) }}%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Task Content -->
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                            <i class="fas fa-{{ 'video' if task.type == 'video' else 'file-alt' if task.type == 'reading' else 'question-circle' if task.type == 'quiz' else 'pen' if task.type == 'assignment' else 'comments' }} text-blue-600"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold text-gray-800">{{ task.title }}</h2>
+                            <div class="flex items-center text-sm text-gray-500">
+                                <i class="fas fa-clock mr-1"></i>
+                                {{ task.estimated_time }}
+                                {% if task.is_mandatory %}
+                                <i class="fas fa-exclamation-circle ml-3 mr-1 text-orange-500"></i>
+                                Required
+                                {% else %}
+                                <i class="fas fa-info-circle ml-3 mr-1 text-gray-400"></i>
+                                Optional
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="px-3 py-1 bg-{{ 'green' if task_progress.get('status') == 'completed' else 'blue' if task_progress.get('status') == 'in_progress' else 'gray' }}-100 text-{{ 'green' if task_progress.get('status') == 'completed' else 'blue' if task_progress.get('status') == 'in_progress' else 'gray' }}-800 text-sm font-medium rounded-full">
+                            {{ task_progress.get('status', 'not_started').title() }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6">
+                <!-- Task Content Based on Type -->
+                {% if task.get('type') == 'video' %}
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Video Content</h3>
+                    {% if embed_video_url %}
+                    <div class="relative w-full" style="padding-bottom: 56.25%; height: 0; overflow: hidden;">
+                        <iframe
+                            src="{{ embed_video_url }}"
+                            title="{{ task.title }}"
+                            frameborder="0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowfullscreen
+                            class="absolute top-0 left-0 w-full h-full rounded-lg">
+                        </iframe>
+                    </div>
+                    {% else %}
+                    <div class="bg-gray-100 rounded-lg p-8 text-center">
+                        <i class="fas fa-exclamation-triangle text-4xl text-yellow-500 mb-4"></i>
+                        <p class="text-gray-600 mb-2">Unable to embed video</p>
+                        <p class="text-sm text-gray-500 mb-4">The video link may not be a valid YouTube URL</p>
+                        <a href="{{ task.resource_link }}" target="_blank"
+                           class="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                            <i class="fas fa-external-link-alt mr-2"></i>Watch on YouTube
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+
+                {% elif task.get('type') == 'reading' %}
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Reading Material</h3>
+                    <div class="bg-gray-50 rounded-lg p-6">
+                        <div class="flex items-start">
+                            <i class="fas fa-file-pdf text-red-500 mr-3 mt-1 text-xl"></i>
+                            <div class="flex-1">
+                                <p class="text-gray-700 leading-relaxed mb-4">{{ task.description }}</p>
+                                {% if task.resource_link %}
+                                <div class="bg-white border border-gray-200 rounded-lg p-4">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center">
+                                            <i class="fas fa-download text-blue-600 mr-2"></i>
+                                            <div>
+                                                <p class="font-medium text-gray-800">Reading Document</p>
+                                                <p class="text-sm text-gray-600">Click to download and read the material</p>
+                                            </div>
+                                        </div>
+                                        <a href="{{ task.resource_link }}" target="_blank" download
+                                           class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                                            <i class="fas fa-download mr-2"></i>Download & Read
+                                        </a>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {% elif task.get('type') == 'quiz' %}
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Quiz Assessment</h3>
+
+                    {% set quiz_questions = (quiz_content or task.description) | parse_quiz_questions %}
+
+                    {% if quiz_questions %}
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                        <!-- Quiz Header -->
+                        <div class="bg-gradient-to-r from-purple-500 to-blue-600 text-white p-4 rounded-t-lg">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <i class="fas fa-clipboard-list mr-3 text-xl"></i>
+                                    <div>
+                                        <h4 class="text-lg font-semibold">Assessment Quiz</h4>
+                                        <p class="text-purple-100 text-sm">{{ quiz_questions | length }} questions • Single choice</p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-2xl font-bold" id="question-counter">1 / {{ quiz_questions | length }}</div>
+                                    <div class="text-sm text-purple-100">Question</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quiz Content -->
+                        <div class="p-6">
+                            <form id="quiz-form" method="POST" action="{{ url_for('submit_quiz', course_id=course.id, module_id=module.id, task_id=task.id) }}" onsubmit="return false;">
+                                <div id="quiz-questions">
+                                    {% for question in quiz_questions %}
+                                    <div class="quiz-question {% if not loop.first %}hidden{% endif %}" data-question="{{ loop.index }}">
+                                        <div class="mb-6">
+                                            <div class="flex items-start mb-4">
+                                                <span class="bg-purple-100 text-purple-800 text-sm font-medium px-3 py-1 rounded-full mr-3 flex-shrink-0">{{ loop.index }}</span>
+                                                <h5 class="text-lg font-medium text-gray-800 leading-tight">{{ question.question }}</h5>
+                                            </div>
+
+                                            <div class="space-y-3 ml-8">
+                                                {% set question_number = loop.index %}
+                                                {% for option in question.options %}
+                                                <label class="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                                                    <input type="radio" name="question_{{ question_number }}" value="{{ option[0] }}" class="mr-3 text-purple-600 focus:ring-purple-500" required>
+                                                    <span class="text-gray-700">{{ option }}</span>
+                                                </label>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+
+                                <!-- Quiz Navigation -->
+                                <div class="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
+                                    <button type="button" id="prev-btn" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                        <i class="fas fa-chevron-left mr-2"></i>Previous
+                                    </button>
+
+                                    <div class="flex space-x-2">
+                                        {% for i in range(1, quiz_questions | length + 1) %}
+                                        <button type="button" class="quiz-nav-btn w-10 h-10 rounded-full flex items-center justify-center {% if loop.first %}bg-purple-600 text-white{% else %}bg-gray-100 text-gray-700{% endif %}" data-question="{{ i }}">
+                                            {{ i }}
+                                        </button>
+                                        {% endfor %}
+                                    </div>
+
+                                    <button type="button" id="next-btn" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                                        Next <i class="fas fa-chevron-right ml-2"></i>
+                                    </button>
+                                </div>
+
+                                <!-- Submit Button -->
+                                <div class="mt-8 pt-6 border-t border-gray-200">
+                                    <button type="submit" class="w-full md:w-auto px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors">
+                                        <i class="fas fa-paper-plane mr-2"></i>Submit Quiz
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Quiz Results (shown after submission) -->
+                    <div id="quiz-results" class="hidden mt-6">
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                            <div class="p-6">
+                                <div class="text-center mb-6">
+                                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <i class="fas fa-trophy text-2xl text-green-600"></i>
+                                    </div>
+                                    <h4 class="text-xl font-semibold text-gray-800 mb-2">Quiz Completed!</h4>
+                                    <div class="text-3xl font-bold text-green-600" id="quiz-score">0%</div>
+                                    <p class="text-gray-600" id="quiz-feedback"></p>
+                                </div>
+
+                                <div class="space-y-4" id="question-review">
+                                    <!-- Question review will be populated here -->
+                                </div>
+
+                                <div class="mt-6 text-center">
+                                    <a href="{{ url_for('course_module_tasks', course_id=course.id, module_id=module.id) }}"
+                                       class="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                                        <i class="fas fa-arrow-left mr-2"></i>Back to Tasks
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="bg-gray-100 rounded-lg p-8 text-center">
+                        <i class="fas fa-exclamation-triangle text-4xl text-yellow-500 mb-4"></i>
+                        <p class="text-gray-600 mb-2">No quiz questions found</p>
+                        <p class="text-sm text-gray-500">The quiz needs to be configured with questions in the proper format.</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                {% elif task.get('type') == 'assignment' %}
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Assignment</h3>
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+                        <div class="flex items-start">
+                            <i class="fas fa-pen text-yellow-600 mr-3 mt-1"></i>
+                            <div>
+                                <p class="text-gray-700">{{ task.description }}</p>
+                                {% if task.resource_link %}
+                                <div class="mt-3">
+                                    <a href="{{ task.resource_link }}" target="_blank"
+                                       class="text-blue-600 hover:text-blue-800 text-sm">
+                                        <i class="fas fa-paperclip mr-1"></i>Assignment Resources
+                                    </a>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Assignment Actions -->
+                    <div class="mt-6">
+                        <div class="flex items-center justify-between">
+                            <div class="text-sm text-gray-600">
+                                {% if task.get('due_date') %}
+                                    <span class="font-medium">Due: {{ task.due_date }}</span>
+                                {% endif %}
+                            </div>
+                            <a href="{{ url_for('submit_assignment', task_id=task.id) }}"
+                               class="inline-flex items-center px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors">
+                                <i class="fas fa-upload mr-2"></i>Submit Assignment
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                {% elif task.get('type') == 'discussion' %}
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Discussion</h3>
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                        <div class="flex items-start">
+                            <i class="fas fa-comments text-blue-600 mr-3 mt-1"></i>
+                            <div>
+                                <p class="text-gray-700">{{ task.description }}</p>
+                                <div class="mt-3">
+                                    <button class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                        <i class="fas fa-reply mr-2"></i>Join Discussion
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Progress and Actions -->
+                <div class="border-t border-gray-200 pt-6">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-4">
+                            {% if task_progress.get('status') == 'completed' %}
+                            <div class="flex items-center text-green-600">
+                                <i class="fas fa-check-circle mr-2"></i>
+                                <span class="font-medium">Task Completed!</span>
+                            </div>
+                            {% else %}
+                            <form method="POST" action="{{ url_for('complete_task', course_id=course.id, module_id=module.id, task_id=task.id) }}" class="inline">
+                                <button type="submit" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors">
+                                    <i class="fas fa-check mr-2"></i>Mark as Complete
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        <div class="flex space-x-3">
+                            <a href="{{ url_for('course_module_tasks', course_id=course.id, module_id=module.id) }}"
+                               class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                                <i class="fas fa-arrow-left mr-2"></i>Back to Tasks
+                            </a>
+                            {% if task_progress.get('status') == 'completed' %}
+                            <a href="{{ url_for('course_modules', course_id=course.id) }}"
+                               class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                Continue Learning <i class="fas fa-arrow-right ml-2"></i>
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const questions = document.querySelectorAll('.quiz-question');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const submitBtn = document.getElementById('submit-quiz');
+    const questionDots = document.querySelectorAll('.question-dot');
+    const questionCounter = document.getElementById('question-counter');
+    const quizForm = document.getElementById('quiz-form');
+    const quizResults = document.getElementById('quiz-results');
+
+    let currentQuestion = 0;
+    const totalQuestions = questions.length;
+
+    function updateQuestionDisplay() {
+        // Hide all questions
+        questions.forEach(q => q.classList.add('hidden'));
+
+        // Show current question
+        questions[currentQuestion].classList.remove('hidden');
+
+        // Update counter
+        questionCounter.textContent = `${currentQuestion + 1} / ${totalQuestions}`;
+
+        // Update navigation buttons
+        prevBtn.disabled = currentQuestion === 0;
+        nextBtn.textContent = currentQuestion === totalQuestions - 1 ? 'Submit Quiz' : 'Next';
+        submitBtn.classList.toggle('hidden', currentQuestion !== totalQuestions - 1);
+
+        // Update dots
+        questionDots.forEach((dot, index) => {
+            dot.classList.toggle('bg-purple-600', index === currentQuestion);
+            dot.classList.toggle('bg-gray-300', index !== currentQuestion);
+        });
+    }
+
+    // Navigation event listeners
+    prevBtn.addEventListener('click', function() {
+        if (currentQuestion > 0) {
+            currentQuestion--;
+            updateQuestionDisplay();
+        }
+    });
+
+    nextBtn.addEventListener('click', function() {
+        if (currentQuestion < totalQuestions - 1) {
+            currentQuestion++;
+            updateQuestionDisplay();
+        } else {
+            // Submit quiz
+            submitQuiz();
+        }
+    });
+
+    // Dot navigation
+    questionDots.forEach((dot, index) => {
+        dot.addEventListener('click', function() {
+            currentQuestion = index;
+            updateQuestionDisplay();
+        });
+    });
+
+    // Quiz submission
+    function submitQuiz() {
+        // Check if all questions are answered
+        const formData = new FormData(quizForm);
+        const answeredQuestions = new Set();
+        
+        // Check which questions have been answered
+        for (const [name, value] of formData.entries()) {
+            if (name.startsWith('question_')) {
+                const questionNum = name.split('_')[1];
+                answeredQuestions.add(parseInt(questionNum));
+            }
+        }
+        
+        // Check if all questions are answered
+        if (answeredQuestions.size < totalQuestions) {
+            if (!confirm(`You've only answered ${answeredQuestions.size} out of ${totalQuestions} questions. Are you sure you want to submit?`)) {
+                return false;
+            }
+        }
+
+        // Show loading state
+        const submitBtn = quizForm.querySelector('button[type="submit"]');
+        const originalBtnText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
+
+        // Send to server
+        fetch(quizForm.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(async response => {
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || `HTTP error! status: ${response.status}`);
+            }
+            return data;
+        })
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to submit quiz');
+            }
+            showQuizResults(data);
+        })
+        .catch(error => {
+            console.error('Quiz submission error:', error);
+            alert('Error submitting quiz: ' + (error.message || 'Please try again.'));
+        })
+        .finally(() => {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+        });
+        
+        return false;
+    }
+
+    // Handle form submission
+    quizForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        submitQuiz();
+    });
+
+    function showQuizResults(data) {
+        // Hide quiz form, show results
+        const quizContainer = document.querySelector('.quiz-content');
+        const resultsContainer = document.getElementById('quiz-results');
+        
+        if (quizContainer) quizContainer.classList.add('hidden');
+        if (resultsContainer) resultsContainer.classList.remove('hidden');
+
+        // Update score display
+        const scoreElement = document.getElementById('quiz-score');
+        const feedbackElement = document.getElementById('quiz-feedback');
+        const reviewContainer = document.getElementById('question-review');
+        
+        if (scoreElement) scoreElement.textContent = `${Math.round(data.score)}%`;
+        
+        if (feedbackElement) {
+            feedbackElement.textContent = data.passed ? 
+                'Congratulations! You passed the quiz.' : 
+                'You did not pass the quiz. Please review the material and try again.';
+            feedbackElement.className = `text-lg font-medium ${data.passed ? 'text-green-600' : 'text-red-600'}`;
+        }
+
+        // Show question review
+        if (reviewContainer) {
+            reviewContainer.innerHTML = '';
+            
+            if (data.questions && data.questions.length > 0) {
+                data.questions.forEach((q, index) => {
+                    const questionDiv = document.createElement('div');
+                    questionDiv.className = 'mb-6 p-4 border rounded-lg';
+                    questionDiv.innerHTML = `
+                        <div class="flex items-start">
+                            <span class="flex-shrink-0 mr-3 mt-1 w-6 h-6 rounded-full flex items-center justify-center 
+                                ${q.correct ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}">
+                                ${index + 1}
+                            </span>
+                            <div class="flex-1">
+                                <p class="font-medium text-gray-800 mb-2">${q.question}</p>
+                                <div class="space-y-2 mt-2">
+                                    <div class="p-2 rounded ${q.correct ? 'bg-green-50' : 'bg-red-50'}">
+                                        <p class="text-sm">
+                                            <span class="font-medium">Your answer:</span>
+                                            <span class="ml-1 ${q.correct ? 'text-green-700' : 'text-red-700'}">
+                                                ${q.user_answer || 'No answer provided'}
+                                            </span>
+                                        </p>
+                                        ${!q.correct ? `
+                                        <p class="text-sm mt-1">
+                                            <span class="font-medium">Correct answer:</span>
+                                            <span class="ml-1 text-green-700">${q.correct_answer}</span>
+                                        </p>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    reviewContainer.appendChild(questionDiv);
+                });
+            } else {
+                reviewContainer.innerHTML = '<p class="text-gray-600">No question details available.</p>';
+            }
+        }
+        
+        // Scroll to results
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Initialize
+    updateQuestionDisplay();
+});
+</script>
+{% endblock %}

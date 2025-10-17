@@ -1,0 +1,3178 @@
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+import os
+import random
+import string
+import json
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from supabase import create_client, Client
+# from realtime import AuthorizationError, NotConnectedError # This import seems incorrect based on the error
+
+def format_datetime(value, format='%b %d, %Y %I:%M %p'):
+    """Format a datetime object or ISO format string to a readable format."""
+    if value is None:
+        return "Never"
+    if isinstance(value, str):
+        try:
+            # Try parsing ISO format string
+            value = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
+            return value  # Return as is if parsing fails
+    try:
+        return value.strftime(format)
+    except (AttributeError, ValueError):
+        return str(value)  # Fallback to string representation
+
+def youtube_id_filter(url):
+    """Extract YouTube video ID from various YouTube URL formats"""
+    if not url:
+        return None
+
+    import re
+
+    # Handle different YouTube URL formats
+    patterns = [
+        r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})',
+        r'youtube\.com\/v\/([a-zA-Z0-9_-]{11})',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+
+def parse_quiz_questions(quiz_text):
+    """Parse quiz questions from the formatted text"""
+    if not quiz_text or not isinstance(quiz_text, str):
+        return []
+
+    questions = []
+    lines = [line.strip() for line in quiz_text.strip().split('\n') if line.strip()]
+    
+    current_question = None
+    current_options = []
+    current_answer = None
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        
+        # Look for a question (any line that's not an option or answer)
+        if not line.startswith(('A)', 'B)', 'C)', 'D)', 'Answer:')):
+            # If we have a complete question, save it
+            if current_question and current_options and current_answer:
+                questions.append({
+                    'question': current_question,
+                    'options': current_options.copy(),
+                    'correct_answer': current_answer
+                })
+                current_options = []
+                current_answer = None
+            
+            current_question = line
+            
+            # Look ahead for options and answer
+            i += 1
+            while i < len(lines) and lines[i].startswith(('A)', 'B)', 'C)', 'D)', 'Answer:')):
+                line = lines[i].strip()
+                
+                # Handle options
+                if line.startswith(('A)', 'B)', 'C)', 'D)')):
+                    current_options.append(line)
+                # Handle answer
+                elif line.startswith('Answer:'):
+                    answer_part = line.split(':', 1)[1].strip().upper()
+                    if answer_part in ['A', 'B', 'C', 'D']:
+                        current_answer = answer_part
+                
+                i += 1
+            
+            # If we found a complete question, add it
+            if current_question and current_options and current_answer:
+                questions.append({
+                    'question': current_question,
+                    'options': current_options.copy(),
+                    'correct_answer': current_answer
+                })
+                current_question = None
+                current_options = []
+                current_answer = None
+        else:
+            i += 1
+    
+    # Handle the last question if it wasn't added
+    if current_question and current_options and current_answer:
+        questions.append({
+            'question': current_question,
+            'options': current_options.copy(),
+            'correct_answer': current_answer
+        })
+    
+    return questions
+
+def format_quiz_questions(questions):
+    """Format quiz questions back to text format"""
+    if not questions:
+        return ""
+
+    formatted_lines = []
+    for i, q in enumerate(questions, 1):
+        formatted_lines.append(f"{i}. {q['question']}")
+        for option in q['options']:
+            formatted_lines.append(f"   {option}")
+        formatted_lines.append(f"   Correct Answer: {q['correct_answer']}")
+        if i < len(questions):
+            formatted_lines.append("")  # Empty line between questions
+
+    return '\n'.join(formatted_lines)
+
+def convert_to_youtube_embed(url):
+    """Convert various YouTube URL formats to embed format"""
+    if not url:
+        return None
+
+    import re
+
+    # Handle different YouTube URL formats and convert to embed format
+    patterns = [
+        # youtu.be/VIDEO_ID -> youtube.com/embed/VIDEO_ID
+        (r'https?://youtu\.be/([a-zA-Z0-9_-]{11})', r'https://www.youtube.com/embed/\1'),
+        # youtube.com/watch?v=VIDEO_ID -> youtube.com/embed/VIDEO_ID
+        (r'https?://(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})', r'https://www.youtube.com/embed/\1'),
+        # youtube.com/embed/VIDEO_ID (already embed format) -> keep as is
+        (r'https?://(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})', r'https://www.youtube.com/embed/\1'),
+        # youtube.com/v/VIDEO_ID -> youtube.com/embed/VIDEO_ID
+        (r'https?://(?:www\.)?youtube\.com/v/([a-zA-Z0-9_-]{11})', r'https://www.youtube.com/embed/\1'),
+    ]
+
+    for pattern, replacement in patterns:
+        if re.search(pattern, url):
+            return re.sub(pattern, replacement, url)
+
+    return url  # Return original URL if no pattern matches
+
+# Load environment variables
+load_dotenv()
+
+# Initialize Flask app
+app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())
+
+# Register the custom filters
+app.jinja_env.filters['youtube_id'] = youtube_id_filter
+app.jinja_env.filters['parse_quiz_questions'] = parse_quiz_questions
+app.jinja_env.filters['strftime'] = format_datetime
+app.jinja_env.filters['format_datetime'] = format_datetime  # Add an alias for more explicit usage
+app.jinja_env.filters['datetimeformat'] = format_datetime  # Add datetimeformat alias for compatibility
+
+# Initialize Supabase client
+supabase_url = os.getenv('SUPABASE_URL')
+supabase_key = os.getenv('SUPABASE_KEY')
+supabase: Client = create_client(supabase_url, supabase_key)
+
+# Store OTPs in memory (in production, use Redis or database)
+otp_storage = {}
+# Store password reset tokens separately
+password_reset_storage = {}
+
+def generate_otp(length=6):
+    """Generate a random numeric OTP of given length"""
+    return ''.join(random.choices(string.digits, k=length))
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        return render_template('dashboard.html', username=session.get('username'))
+    return redirect(url_for('login'))
+
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        otp = request.form.get('otp')
+        
+        # Initial form validation
+        if not all([username, email, password, confirm_password]):
+            flash('All fields are required.', 'error')
+            return redirect(url_for('signup'))
+        
+        if password != confirm_password:
+            flash('Passwords do not match.', 'error')
+            return redirect(url_for('signup'))
+        
+        if len(password) < 6:
+            flash('Password must be at least 6 characters long.', 'error')
+            return redirect(url_for('signup'))
+        
+        # Check if this is OTP verification step
+        if 'verifying_otp' in session and session['verifying_otp']:
+            stored_otp = otp_storage.get(email, {}).get('otp')
+            expiry_time = otp_storage.get(email, {}).get('expiry')
+            
+            if not stored_otp or datetime.now() > datetime.fromisoformat(expiry_time):
+                flash('OTP has expired. Please try again.', 'error')
+                session.pop('verifying_otp', None)
+                otp_storage.pop(email, None)
+                return redirect(url_for('signup'))
+            
+            if otp != stored_otp:
+                flash('Invalid OTP. Please try again.', 'error')
+                return render_template('signup.html', 
+                                     username=username, 
+                                     email=email,
+                                     show_otp_field=True)
+            
+            # OTP verified, proceed with user creation
+            try:
+                password_hash = generate_password_hash(password)
+                # Insert into profiles table
+                profile_data = {
+                    'name': username,
+                    'email': email,
+                    'password_hash': password_hash,
+                    'role': 'student'
+                }
+                result = supabase.table('profiles').insert(profile_data).execute()
+                
+                if result.data and len(result.data) > 0:
+                    # Get the new user's ID
+                    user_id = result.data[0]['id']
+                    
+                    # Also add to users table
+                    try:
+                        user_data = {
+                            'id': user_id,
+                            'email': email,
+                            'full_name': username,
+                            'created_at': datetime.utcnow().isoformat(),
+                            'updated_at': datetime.utcnow().isoformat()
+                        }
+                        supabase.table('users').insert(user_data).execute()
+                    except Exception as e:
+                        print(f"Error adding user to users table: {str(e)}")
+                        # Continue with signup even if users table update fails
+                
+                # Clean up
+                session.pop('verifying_otp', None)
+                otp_storage.pop(email, None)
+                
+                flash('Registration successful! Please log in.', 'success')
+                return redirect(url_for('login'))
+                
+            except Exception as e:
+                flash(f'Error creating account: {str(e)}', 'error')
+                return redirect(url_for('signup'))
+        
+        # If we get here, we need to generate and send OTP
+        try:
+            # Check if email already exists
+            existing_user = supabase.table('profiles').select('email').filter('email', 'eq', email).execute()
+            if existing_user.data:
+                flash('Email already registered.', 'error')
+                return redirect(url_for('signup'))
+            
+            # Generate and store OTP
+            otp = generate_otp()
+            expiry = (datetime.now() + timedelta(minutes=10)).isoformat()  # OTP valid for 10 minutes
+            otp_storage[email] = {
+                'otp': otp,
+                'expiry': expiry,
+                'username': username,
+                'password': password
+            }
+            
+            # In production, you would send the OTP via email/SMS here
+            print(f"\n{'='*50}")
+            print(f"OTP for {email}: {otp}")
+            print(f"Expires at: {expiry}")
+            print("="*50 + "\n")
+            
+            # Set session to indicate we're verifying OTP
+            session['verifying_otp'] = True
+            flash('Verification code sent to your email!', 'info')
+            return redirect(url_for('verify_otp', email=email))
+            
+        except Exception as e:
+            flash(f'An error occurred: {str(e)}', 'error')
+            return redirect(url_for('signup'))
+    
+    # Clear any existing OTP verification state for a fresh start
+    session.pop('verifying_otp', None)
+    return render_template('signup.html')
+
+@app.route('/resend-otp', methods=['POST'])
+def resend_otp():
+    email = request.form.get('email')
+    if not email:
+        flash('Email is required to resend OTP', 'error')
+        return redirect(url_for('signup'))
+    
+    # Generate new OTP
+    otp = generate_otp()
+    print(otp)
+    expiry = (datetime.now() + timedelta(minutes=10)).isoformat()
+    
+    if email in otp_storage:
+        otp_storage[email].update({
+            'otp': otp,
+            'expiry': expiry
+        })
+    else:
+        otp_storage[email] = {
+            'otp': otp,
+            'expiry': expiry
+        }
+    
+    # In production, send the OTP via email/SMS
+    print(f"\n{'='*50}")
+    print(f"NEW OTP for {email}: {otp}")
+    print(f"Expires at: {expiry}")
+    print("="*50 + "\n")
+    
+    session['verifying_otp'] = True
+    flash('New verification code sent!', 'info')
+    return redirect(url_for('verify_otp', email=email))
+
+
+@app.route('/verify-otp/<email>', methods=['GET', 'POST'])
+def verify_otp(email):
+    if request.method == 'POST':
+        otp = request.form.get('otp')
+        
+        if not otp:
+            flash('Please enter the verification code.', 'error')
+            return redirect(url_for('verify_otp', email=email))
+        
+        # Verify OTP
+        stored_otp = otp_storage.get(email, {}).get('otp')
+        expiry_time = otp_storage.get(email, {}).get('expiry')
+        
+        if not stored_otp or datetime.now() > datetime.fromisoformat(expiry_time):
+            flash('OTP has expired. Please request a new one.', 'error')
+            otp_storage.pop(email, None)
+            return redirect(url_for('signup'))
+        
+        if otp != stored_otp:
+            flash('Invalid verification code. Please try again.', 'error')
+            return render_template('verify_otp.html', email=email)
+        
+        # OTP verified, get user data and create account
+        try:
+            user_data = otp_storage.get(email, {})
+            username = user_data.get('username')
+            password = user_data.get('password')
+            
+            if not username or not password:
+                flash('Session expired. Please try signing up again.', 'error')
+                return redirect(url_for('signup'))
+            
+            password_hash = generate_password_hash(password)
+            result = supabase.table('profiles').insert({
+                'name': username,
+                'email': email,
+                'password_hash': password_hash,
+                'role': 'student'
+            }).execute()
+            
+            # Clean up
+            otp_storage.pop(email, None)
+            session.pop('verifying_otp', None)
+            
+            flash('Account created successfully! Please log in.', 'success')
+            return redirect(url_for('login'))
+            
+        except Exception as e:
+            flash(f'An error occurred: {str(e)}', 'error')
+            return redirect(url_for('signup'))
+    
+    # Check if OTP exists for this email
+    if email not in otp_storage:
+        flash('Please sign up first to receive a verification code.', 'error')
+        return redirect(url_for('signup'))
+    
+    return render_template('verify_otp.html', email=email)
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        if not email or not password:
+            flash('Email and password are required.', 'error')
+            return redirect(url_for('login'))
+        
+        try:
+            # Fetch user from Supabase
+            result = supabase.table('profiles').select('*').filter('email', 'eq', email).execute()
+            
+            if result.data and len(result.data) > 0:
+                user = result.data[0]
+                
+                # Verify password
+                if check_password_hash(user['password_hash'], password):
+                    user_id = str(user['id'])
+                    
+                    # Check if user exists in users table, if not create
+                    try:
+                        user_check = supabase.table('users').select('id').filter('id', user_id).execute()
+                        if not user_check.data:
+                            # Create user in users table
+                            user_data = {
+                                'id': user_id,
+                                'email': user['email'],
+                                'full_name': user.get('name', ''),
+                                'created_at': datetime.utcnow().isoformat(),
+                                'updated_at': datetime.utcnow().isoformat()
+                            }
+                            supabase.table('users').insert(user_data).execute()
+                    except Exception as e:
+                        print(f"Error syncing user to users table: {str(e)}")
+                    
+                    # Set session variables
+                    session['user_id'] = user_id
+                    session['username'] = user['name']
+                    session['user_email'] = user['email']  # Changed from 'email' to 'user_email' to match submit_quiz
+                    session['full_name'] = user.get('name', '')
+                    session['role'] = user['role']
+                    
+                    flash(f'Welcome back, {user["name"]}!', 'success')
+                    return redirect(url_for('dashboard'))
+                else:
+                    flash('Invalid email or password.', 'error')
+                    return redirect(url_for('login'))
+            else:
+                flash('Invalid email or password.', 'error')
+                return redirect(url_for('login'))
+                
+        except Exception as e:
+            flash(f'An error occurred: {str(e)}', 'error')
+            return redirect(url_for('login'))
+    
+    return render_template('login.html')
+
+
+@app.route('/courses')
+@login_required
+def courses():
+    try:
+        # Load courses from Supabase
+        result = supabase.table('courses').select('*').eq('status', 'active').execute()
+        courses = result.data if result.data else []
+
+        # Convert Supabase data format to match template expectations
+        formatted_courses = []
+        for course in courses:
+            formatted_course = {
+                'id': course['id'],
+                'title': course['title'],
+                'description': course['description'],
+                'instructor': 'Teacher',  # Will be populated from teacher_uuid later
+                'duration': course['duration'],
+                'level': course['level'],
+                'category': course['category'],
+                'price': f"${course['price']}" if course['price'] > 0 else 'Free',
+                'students': 0,  # Will be calculated from enrollments
+                'rating': '0.0',  # Will be calculated from reviews
+                'color': 'blue',  # Default color
+                'icon': 'fa-graduation-cap'  # Default icon
+            }
+            formatted_courses.append(formatted_course)
+
+        # If no courses in database, use sample data for demo
+        if not formatted_courses:
+            formatted_courses = [
+                {
+                    'id': 1,
+                    'title': 'Mathematics Fundamentals',
+                    'description': 'Learn the basics of algebra, geometry, and calculus with hands-on exercises and real-world applications.',
+                    'instructor': 'Dr. Sarah Johnson',
+                    'duration': '8 weeks',
+                    'students': 1247,
+                    'rating': '4.8',
+                    'level': 'Beginner',
+                    'color': 'blue',
+                    'icon': 'fa-square-root-alt',
+                    'category': 'Mathematics',
+                    'price': 'Free',
+                    'language': 'English',
+                    'skills': ['Algebra', 'Geometry', 'Calculus', 'Problem Solving'],
+                    'curriculum': [
+                        {'module': 'Week 1-2', 'title': 'Basic Algebra', 'lessons': 5, 'duration': '2 hours'},
+                        {'module': 'Week 3-4', 'title': 'Geometry Fundamentals', 'lessons': 6, 'duration': '2.5 hours'},
+                        {'module': 'Week 5-6', 'title': 'Introduction to Calculus', 'lessons': 4, 'duration': '3 hours'},
+                        {'module': 'Week 7-8', 'title': 'Applications & Review', 'lessons': 3, 'duration': '2 hours'}
+                    ],
+                    'reviews': [
+                        {'name': 'John Doe', 'rating': 5, 'comment': 'Excellent course! Very clear explanations.'},
+                        {'name': 'Jane Smith', 'rating': 4, 'comment': 'Good content, but could use more practice problems.'}
+                    ]
+                },
+                {
+                    'id': 2,
+                    'title': 'Physics for Engineers',
+                    'description': 'Comprehensive physics course covering mechanics, thermodynamics, and electromagnetism.',
+                    'instructor': 'Prof. Michael Chen',
+                    'duration': '12 weeks',
+                    'students': 892,
+                    'rating': '4.9',
+                    'level': 'Intermediate',
+                    'color': 'green',
+                    'icon': 'fa-atom',
+                    'category': 'Physics',
+                    'price': '$49',
+                    'language': 'English',
+                    'skills': ['Mechanics', 'Thermodynamics', 'Electromagnetism', 'Engineering Physics'],
+                    'curriculum': [
+                        {'module': 'Week 1-3', 'title': 'Classical Mechanics', 'lessons': 8, 'duration': '3 hours'},
+                        {'module': 'Week 4-6', 'title': 'Thermodynamics', 'lessons': 6, 'duration': '2.5 hours'},
+                        {'module': 'Week 7-9', 'title': 'Electromagnetism', 'lessons': 7, 'duration': '3 hours'},
+                        {'module': 'Week 10-12', 'title': 'Applications & Projects', 'lessons': 5, 'duration': '4 hours'}
+                    ],
+                    'reviews': [
+                        {'name': 'Alice Brown', 'rating': 5, 'comment': 'Perfect for engineering students!'},
+                        {'name': 'Bob Wilson', 'rating': 5, 'comment': 'Challenging but rewarding course.'}
+                    ]
+                },
+                {
+                    'id': 3,
+                    'title': 'Computer Science Basics',
+                    'description': 'Introduction to programming, data structures, and algorithms for beginners.',
+                    'instructor': 'Dr. Emily Rodriguez',
+                    'duration': '10 weeks',
+                    'students': 2156,
+                    'rating': '4.7',
+                    'level': 'Beginner',
+                    'color': 'purple',
+                    'icon': 'fa-code',
+                    'category': 'Computer Science',
+                    'price': 'Free',
+                    'language': 'English',
+                    'skills': ['Programming', 'Data Structures', 'Algorithms', 'Problem Solving'],
+                    'curriculum': [
+                        {'module': 'Week 1-2', 'title': 'Programming Fundamentals', 'lessons': 6, 'duration': '2 hours'},
+                        {'module': 'Week 3-5', 'title': 'Data Structures', 'lessons': 8, 'duration': '2.5 hours'},
+                        {'module': 'Week 6-8', 'title': 'Algorithms', 'lessons': 7, 'duration': '3 hours'},
+                        {'module': 'Week 9-10', 'title': 'Projects & Practice', 'lessons': 4, 'duration': '4 hours'}
+                    ],
+                    'reviews': [
+                        {'name': 'Carol Davis', 'rating': 5, 'comment': 'Great introduction to programming!'},
+                        {'name': 'David Lee', 'rating': 4, 'comment': 'Very comprehensive for beginners.'}
+                    ]
+                }
+            ]
+
+        # Get enrolled courses for current user (fetch from database)
+        user_id = session.get('user_id')
+        if user_id:
+            enrolled_result = supabase.table('enrollments').select('course_id').filter('student_id', 'eq', user_id).filter('status', 'eq', 'active').execute()
+            enrolled_course_ids = [str(enrollment['course_id']) for enrollment in enrolled_result.data] if enrolled_result.data else []
+        else:
+            enrolled_course_ids = []
+
+        # Add enrollment status to courses
+        for course in formatted_courses:
+            # Handle both string and integer IDs
+            course_id = course['id']
+            if isinstance(course_id, str):
+                try:
+                    course_id = int(course_id)
+                except ValueError:
+                    course_id = course['id']
+
+            course['is_enrolled'] = str(course_id) in enrolled_course_ids
+
+        return render_template('courses.html',
+                             courses=formatted_courses,
+                             enrolled_course_ids=enrolled_course_ids,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/course/<course_id>')
+@login_required
+def course_detail(course_id):
+    # Load courses from Supabase or use sample data
+    try:
+        result = supabase.table('courses').select('*').execute()
+        courses = result.data if result.data else []
+    except:
+        courses = []
+
+    # If no courses in database, use sample data for demo
+    if not courses:
+        courses = [
+            {
+                'id': 'sample1',
+                'title': 'Mathematics Fundamentals',
+                'description': 'Learn the basics of algebra, geometry, and calculus with hands-on exercises and real-world applications. This comprehensive course covers everything from basic arithmetic to advanced calculus concepts.',
+                'instructor': 'Dr. Sarah Johnson',
+                'instructor_bio': 'PhD in Mathematics from MIT with 15+ years of teaching experience. Author of "Mathematics Made Simple".',
+                'duration': '8 weeks',
+                'students': 1247,
+                'rating': '4.8',
+                'level': 'Beginner',
+                'color': 'blue',
+                'icon': 'fa-square-root-alt',
+                'category': 'Mathematics',
+                'price': 'Free',
+                'language': 'English',
+                'skills': ['Algebra', 'Geometry', 'Calculus', 'Problem Solving'],
+                'learning_objectives': [
+                    'Master fundamental algebraic concepts and operations',
+                    'Understand geometric principles and theorems',
+                    'Apply calculus concepts to real-world problems',
+                    'Develop critical thinking and problem-solving skills'
+                ],
+                'prerequisites': ['Basic arithmetic knowledge', 'High school level mathematics'],
+                'curriculum': [
+                    {
+                        'module': 'Week 1-2: Basic Algebra',
+                        'title': 'Algebraic Foundations',
+                        'lessons': 5,
+                        'duration': '2 hours',
+                        'topics': ['Variables and expressions', 'Linear equations', 'Quadratic equations', 'Polynomials', 'Factoring']
+                    },
+                    {
+                        'module': 'Week 3-4: Geometry',
+                        'title': 'Geometric Principles',
+                        'lessons': 6,
+                        'duration': '2.5 hours',
+                        'topics': ['Points, lines, and planes', 'Angles and triangles', 'Quadrilaterals', 'Circles', '3D geometry']
+                    },
+                    {
+                        'module': 'Week 5-6: Calculus Introduction',
+                        'title': 'Limits and Derivatives',
+                        'lessons': 4,
+                        'duration': '3 hours',
+                        'topics': ['Limits and continuity', 'Differentiation rules', 'Applications of derivatives', 'Optimization']
+                    },
+                    {
+                        'module': 'Week 7-8: Applications',
+                        'title': 'Real-World Applications',
+                        'lessons': 3,
+                        'duration': '2 hours',
+                        'topics': ['Word problems', 'Data analysis', 'Mathematical modeling', 'Final project']
+                    }
+                ],
+                'reviews': [
+                    {'name': 'John Doe', 'rating': 5, 'comment': 'Excellent course! Very clear explanations and practical examples.', 'date': '2 weeks ago'},
+                    {'name': 'Jane Smith', 'rating': 4, 'comment': 'Good content, but could use more practice problems.', 'date': '1 month ago'},
+                    {'name': 'Mike Johnson', 'rating': 5, 'comment': 'Perfect for refreshing math skills before college.', 'date': '3 weeks ago'}
+                ],
+                'enrolled_students': 1247,
+                'completion_rate': '87%',
+                'average_rating': 4.8,
+                'last_updated': '2 months ago'
+            }
+        ]
+
+    # Find course by ID (handle both string and integer IDs)
+    course = None
+    for c in courses:
+        if str(c['id']) == str(course_id):
+            course = c
+            break
+
+    if not course:
+        flash('Course not found.', 'error')
+        return redirect(url_for('courses'))
+
+    # Check if user is enrolled (check database)
+    user_id = session.get('user_id')
+    if user_id:
+        enrolled_result = supabase.table('enrollments').select('id').filter('student_id', 'eq', user_id).filter('course_id', 'eq', course_id).filter('status', 'eq', 'active').execute()
+        is_enrolled = len(enrolled_result.data) > 0 if enrolled_result.data else False
+    else:
+        is_enrolled = False
+
+    # Calculate progress based on completed tasks
+    progress = None
+    if is_enrolled and user_id:
+        try:
+            # Get all modules in the course
+            modules_result = supabase.table('modules').select('id').eq('course_id', course_id).execute()
+            module_ids = [module['id'] for module in modules_result.data] if modules_result.data else []
+
+            # Get all tasks in these modules
+            tasks_result = supabase.table('tasks').select('id').in_('module_id', module_ids).execute()
+            total_tasks = len(tasks_result.data) if tasks_result.data else 0
+
+            # Get completed tasks
+            if total_tasks > 0:
+                task_ids = [task['id'] for task in tasks_result.data]
+                completed_tasks_result = supabase.table('progress').select('task_id').eq('student_id', user_id).in_('task_id', task_ids).eq('status', 'completed').execute()
+                completed_tasks = len(completed_tasks_result.data) if completed_tasks_result.data else 0
+
+                # Calculate completion percentage
+                completion_percentage = round((completed_tasks / total_tasks) * 100, 1)
+
+                # Get last activity
+                last_activity_result = supabase.table('progress').select('updated_at').eq('student_id', user_id).in_('task_id', task_ids).order('updated_at', desc=True).limit(1).execute()
+                last_activity = last_activity_result.data[0]['updated_at'] if last_activity_result.data else None
+
+                progress = {
+                    'completed_lessons': completed_tasks,
+                    'total_lessons': total_tasks,
+                    'completion_percentage': completion_percentage,
+                    'current_module': 'In Progress',  # This can be enhanced to show current module
+                    'time_spent': 'Calculating...',  # This would require tracking time spent
+                    'last_activity': 'Recently' if last_activity else 'No activity yet'
+                }
+        except Exception as e:
+            print(f"Error calculating progress: {str(e)}")
+            progress = {
+                'completed_lessons': 0,
+                'total_lessons': 0,
+                'completion_percentage': 0,
+                'current_module': 'Not started',
+                'time_spent': '0 hours',
+                'last_activity': 'No activity'
+            }
+
+    return render_template('course_detail.html',
+                         course=course,
+                         is_enrolled=is_enrolled,
+                         progress=progress,
+                         username=session.get('username'))
+
+
+@app.route('/course/<course_id>/modules')
+@login_required
+def course_modules(course_id):
+    try:
+        user_id = session.get('user_id')
+
+        # Check if user is enrolled in this course
+        enrolled_result = supabase.table('enrollments').select('id').filter('student_id', 'eq', user_id).filter('course_id', 'eq', course_id).filter('status', 'eq', 'active').execute()
+        if not enrolled_result.data:
+            flash('You must be enrolled in this course to access its modules.', 'error')
+            return redirect(url_for('course_detail', course_id=course_id))
+
+        # Get course details
+        course_result = supabase.table('courses').select('*').filter('id', 'eq', course_id).execute()
+        if not course_result.data:
+            flash('Course not found.', 'error')
+            return redirect(url_for('courses'))
+
+        course = course_result.data[0]
+
+        # Get modules for this course
+        modules_result = supabase.table('modules').select('*').eq('course_id', course_id).order('order_index').execute()
+        modules = modules_result.data if modules_result.data else []
+
+        # Calculate overall progress based on completed tasks
+        total_tasks = 0
+        completed_tasks = 0
+
+        for module in modules:
+            # Get tasks for this module
+            module_tasks_result = supabase.table('tasks').select('id').eq('module_id', module['id']).execute()
+            module_tasks = module_tasks_result.data if module_tasks_result.data else []
+            total_tasks += len(module_tasks)
+
+            # Get completed tasks for this module
+            if module_tasks:
+                task_ids = [task['id'] for task in module_tasks]
+                completed_tasks_result = supabase.table('progress').select('task_id').eq('student_id', user_id).in_('task_id', task_ids).eq('status', 'completed').execute()
+                completed_tasks += len(completed_tasks_result.data) if completed_tasks_result.data else 0
+
+        overall_progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+
+        # Calculate progress for each module based on completed tasks
+        user_progress = {}
+
+        for module in modules:
+            # Get tasks for this module
+            module_tasks_result = supabase.table('tasks').select('id').eq('module_id', module['id']).execute()
+            module_tasks = module_tasks_result.data if module_tasks_result.data else []
+
+            if module_tasks:
+                task_ids = [task['id'] for task in module_tasks]
+                completed_tasks_result = supabase.table('progress').select('task_id').eq('student_id', user_id).in_('task_id', task_ids).eq('status', 'completed').execute()
+                completed_tasks = len(completed_tasks_result.data) if completed_tasks_result.data else 0
+
+                # Calculate module progress percentage
+                module_progress_percentage = (completed_tasks / len(module_tasks)) * 100
+
+                # Get the most recent progress record for this module
+                recent_progress_result = supabase.table('progress').select('*').eq('student_id', user_id).in_('task_id', task_ids).order('updated_at', desc=True).limit(1).execute()
+
+                if recent_progress_result.data:
+                    recent_progress = recent_progress_result.data[0]
+                    user_progress[str(module['id'])] = {
+                        'status': 'completed' if module_progress_percentage >= 100 else 'in_progress',
+                        'completion_percentage': round(module_progress_percentage, 1),
+                        'updated_at': recent_progress.get('updated_at')
+                    }
+                else:
+                    user_progress[str(module['id'])] = {
+                        'status': 'not_started',
+                        'completion_percentage': 0
+                    }
+            else:
+                user_progress[str(module['id'])] = {
+                    'status': 'not_started',
+                    'completion_percentage': 0
+                }
+
+        return render_template('course_modules.html',
+                             course=course,
+                             modules=modules,
+                             user_progress=user_progress,
+                             overall_progress=round(overall_progress, 1),
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('courses'))
+
+@app.route('/course/<course_id>/module/<module_id>')
+@login_required
+def course_module_tasks(course_id, module_id):
+    try:
+        user_id = session.get('user_id')
+
+        # Check if user is enrolled in this course
+        enrolled_result = supabase.table('enrollments').select('id').filter('student_id', 'eq', user_id).filter('course_id', 'eq', course_id).filter('status', 'eq', 'active').execute()
+        if not enrolled_result.data:
+            flash('You must be enrolled in this course to access its modules.', 'error')
+            return redirect(url_for('course_detail', course_id=course_id))
+
+        # Get module details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('course_modules', course_id=course_id))
+
+        module = module_result.data[0]
+
+        # Get course details
+        course_result = supabase.table('courses').select('*').filter('id', 'eq', course_id).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Get tasks for this module
+        tasks_result = supabase.table('tasks').select('*').eq('module_id', module_id).order('order_index').execute()
+        tasks = tasks_result.data if tasks_result.data else []
+
+        # Debug: Print tasks data to see what's available
+        print(f"Tasks data for module {module_id} in course_module_tasks: {tasks}")
+
+        # Ensure tasks have all required fields
+        for i, task in enumerate(tasks):
+            if not hasattr(task, 'get') or 'type' not in task:
+                print(f"Task {i} missing type field in course_module_tasks: {task}")
+                flash('Task data is incomplete.', 'error')
+                return redirect(url_for('course_modules', course_id=course_id))
+
+        # Get user progress for tasks in this module (query by task_id, not module_id)
+        progress_result = supabase.table('progress').select('*').eq('student_id', user_id).in_('task_id', [str(task['id']) for task in tasks]).execute()
+        user_progress = {p['task_id']: p for p in progress_result.data} if progress_result.data else {}
+
+        # Calculate module progress
+        completed_tasks = sum(1 for task in tasks if user_progress.get(str(task['id']), {}).get('status') == 'completed')
+        total_tasks = len(tasks)
+        module_progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+
+        return render_template('course_module_tasks.html',
+                             course=course,
+                             module=module,
+                             tasks=tasks,
+                             user_progress=user_progress,
+                             module_progress=round(module_progress, 1),
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('course_modules', course_id=course_id))
+
+
+@app.route('/course/<course_id>/module/<module_id>/task/<task_id>')
+@login_required
+def course_task(course_id, module_id, task_id):
+    try:
+        user_id = session.get('user_id')
+
+        # Check if user is enrolled in this course
+        enrolled_result = supabase.table('enrollments').select('id').filter('student_id', 'eq', user_id).filter('course_id', 'eq', course_id).filter('status', 'eq', 'active').execute()
+        if not enrolled_result.data:
+            flash('You must be enrolled in this course to access its tasks.', 'error')
+            return redirect(url_for('course_detail', course_id=course_id))
+
+        # Get task details
+        task_result = supabase.table('tasks').select('*').eq('id', task_id).execute()
+        if not task_result.data:
+            flash('Task not found.', 'error')
+            return redirect(url_for('course_module_tasks', course_id=course_id, module_id=module_id))
+
+        task = task_result.data[0]
+
+        # Debug: Print task data to see what's available
+        print(f"Task data: {task}")
+
+        # Ensure task has all required fields
+        if not hasattr(task, 'get') or 'type' not in task:
+            flash('Task data is incomplete.', 'error')
+            return redirect(url_for('course_module_tasks', course_id=course_id, module_id=module_id))
+
+        # Verify task belongs to the specified module
+        if str(task['module_id']) != str(module_id):
+            flash('Task does not belong to this module.', 'error')
+            return redirect(url_for('course_module_tasks', course_id=course_id, module_id=module_id))
+
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        module = module_result.data[0] if module_result.data else {}
+
+        course_result = supabase.table('courses').select('*').filter('id', 'eq', course_id).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Get user progress for this task
+        progress_result = supabase.table('progress').select('*').eq('student_id', user_id).eq('task_id', task_id).execute()
+        task_progress = progress_result.data[0] if progress_result.data else {}
+
+        # Convert YouTube URL to embed format if it's a video task
+        embed_video_url = None
+        if task.get('type') == 'video' and task.get('resource_link'):
+            embed_video_url = convert_to_youtube_embed(task['resource_link'])
+
+        # Handle quiz data for quiz tasks
+        quiz_content = None
+        if task.get('type') == 'quiz':
+            # Check both 'quiz_data' and 'quiz_content' fields, with fallback to description
+            quiz_content = task.get('quiz_data') or task.get('quiz_content') or task.get('description', '')
+            
+            # Debug output
+            print(f"Quiz content from DB: {quiz_content}")
+            
+            # If we have quiz content, try to parse it to ensure it's valid
+            if quiz_content:
+                try:
+                    questions = parse_quiz_questions(quiz_content)
+                    print(f"Successfully parsed {len(questions)} questions from quiz data")
+                except Exception as e:
+                    print(f"Error parsing quiz data: {str(e)}")
+                    quiz_content = None
+
+        # Initialize or update task progress when starting
+        if not task_progress:
+            # Create initial progress record
+            try:
+                supabase.table('progress').insert({
+                    'student_id': user_id,
+                    'course_id': course_id,
+                    'module_id': module_id,
+                    'task_id': task_id,
+                    'status': 'in_progress'
+                }).execute()
+            except Exception as e:
+                # If RLS policy fails, try with admin bypass
+                try:
+                    supabase.rpc('disable_rls_for_admin', params={}).execute()
+                    supabase.table('progress').insert({
+                        'student_id': user_id,
+                        'course_id': course_id,
+                        'module_id': module_id,
+                        'task_id': task_id,
+                        'status': 'in_progress'
+                    }).execute()
+                    supabase.rpc('enable_rls_for_admin', params={}).execute()
+                except:
+                    supabase.rpc('enable_rls_for_admin', params={}).execute()
+                    raise e
+            task_progress = {'status': 'in_progress', 'completion_percentage': 0}
+
+        return render_template('course_task.html',
+                             course=course,
+                             module=module,
+                             task=task,
+                             task_progress=task_progress,
+                             embed_video_url=embed_video_url,
+                             quiz_content=quiz_content,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('course_module_tasks', course_id=course_id, module_id=module_id))
+
+
+@app.route('/course/<course_id>/module/<module_id>/task/<task_id>/submit_quiz', methods=['POST'])
+@login_required
+def submit_quiz(course_id, module_id, task_id):
+    """New and improved quiz submission handler"""
+    try:
+        user_id = session.get('user_id')
+        user_email = session.get('user_email')
+
+        if not user_id or not user_email:
+            return jsonify({'success': False, 'error': 'User not authenticated'}), 401
+
+        # Get quiz data from database
+        quiz_result = supabase.table('tasks').select('*').filter('id', 'eq', task_id).execute()
+
+        if not quiz_result.data:
+            return jsonify({'success': False, 'error': 'Quiz not found'}), 404
+
+        task = dict(quiz_result.data[0]) # Ensure task is a standard dictionary
+        quiz_content = task.get('quiz_data')
+
+        if not quiz_content:
+            return jsonify({'success': False, 'error': 'No quiz content found'}), 400
+
+        # Parse quiz questions
+        questions = parse_quiz_questions(quiz_content)
+        if not questions:
+            return jsonify({'success': False, 'error': 'Invalid quiz format'}), 400
+
+        # Process user answers
+        user_answers = {}
+        score = 0
+        total_questions = len(questions)
+        detailed_results = []
+
+        for i, question in enumerate(questions, 1):
+            field_name = f'question_{i}'
+            user_answer = request.form.get(field_name, '').strip()
+            correct_answer = question.get('correct_answer', '').upper()
+
+            is_correct = user_answer.upper() == correct_answer
+            if is_correct:
+                score += 1
+
+            user_answers[field_name] = user_answer
+
+            detailed_results.append({
+                'question': question['question'],
+                'user_answer': user_answer,
+                'correct_answer': correct_answer,
+                'is_correct': is_correct,
+                'explanation': f"Your answer: {user_answer}. Correct answer: {correct_answer}"
+            })
+
+        # Calculate final score
+        percentage = (score / total_questions) * 100 if total_questions > 0 else 0
+        passing_score = int(task.get('passing_score', 70))
+        passed = percentage >= passing_score
+
+        # Save quiz attempt to database
+        quiz_attempt_data = {
+            'student_id': user_id,
+            'course_id': course_id,
+            'module_id': module_id,
+            'task_id': task_id,
+            'score': round(percentage, 2),
+            'passed': passed,
+            'answers': json.dumps(user_answers),
+            'total_questions': total_questions,
+            'correct_answers': score,
+            'created_at': datetime.now(datetime.UTC).isoformat(),
+            'updated_at': datetime.now(datetime.UTC).isoformat()
+        }
+
+        # Insert quiz attempt
+        attempt_result = supabase.table('quiz_attempts').insert(quiz_attempt_data).execute()
+
+        # Update user progress
+        progress_data = {
+            'student_id': user_id,
+            'course_id': course_id,
+            'module_id': module_id,
+            'task_id': task_id,
+            'status': 'completed' if passed else 'in_progress',
+            'completion_percentage': 100 if passed else min(50, int(percentage)),
+            'completed_at': datetime.now(datetime.UTC).isoformat() if passed else None,
+            'updated_at': datetime.now(datetime.UTC).isoformat()
+        }
+
+        # Update progress - use update instead of upsert for this query
+        supabase.table('progress').update(progress_data).filter('student_id', 'eq', user_id).filter('task_id', 'eq', task_id).execute()
+
+        # Prepare response
+        response_data = {
+            'success': True,
+            'score': round(percentage, 2),
+            'passed': passed,
+            'total_questions': total_questions,
+            'correct_answers': score,
+            'passing_score': passing_score,
+            'results': detailed_results,
+            'message': f'Quiz completed! You scored {score}/{total_questions} ({percentage:.1f}%). {"🎉 Congratulations, you passed!" if passed else f"You need {passing_score}% to pass."}'
+        }
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        print(f"Quiz submission error: {str(e)}")
+        return jsonify({'success': False, 'error': 'An error occurred while submitting the quiz'}), 500
+@app.route('/course/<course_id>/module/<module_id>/task/<task_id>/complete', methods=['POST'])
+@login_required
+def complete_task(course_id, module_id, task_id):
+    try:
+        user_id = session.get('user_id')
+
+        # Verify user is enrolled
+        enrolled_result = supabase.table('enrollments').select('id').filter('student_id', 'eq', user_id).filter('course_id', 'eq', course_id).filter('status', 'eq', 'active').execute()
+        if not enrolled_result.data:
+            flash('You must be enrolled in this course.', 'error')
+            return redirect(url_for('course_task', course_id=course_id, module_id=module_id, task_id=task_id))
+
+        # Update task progress to completed
+        from datetime import datetime
+        supabase.table('progress').update({
+            'status': 'completed',
+            'completion_percentage': 100,
+            'completed_at': datetime.utcnow().isoformat(),  # type: ignore
+        }).filter('student_id', 'eq', user_id).filter('task_id', 'eq', task_id).execute()
+
+        flash('Task completed successfully!', 'success')
+        return redirect(url_for('course_task', course_id=course_id, module_id=module_id, task_id=task_id))
+
+    except Exception as e:
+        flash(f'Error completing task: {str(e)}', 'error')
+        return redirect(url_for('course_task', course_id=course_id, module_id=module_id, task_id=task_id))
+
+
+@app.route('/course/<course_id>/enroll', methods=['POST'])
+@login_required
+def enroll_course(course_id):
+    try:
+        user_id = session.get('user_id')
+
+        # Check if already enrolled
+        existing_enrollment = supabase.table('enrollments').select('id').filter('student_id', 'eq', user_id).filter('course_id', 'eq', course_id).execute()
+        if existing_enrollment.data:
+            flash('You are already enrolled in this course.', 'info')
+            return redirect(url_for('course_detail', course_id=course_id))
+
+        # Find course title by ID
+        course_title = "Course"
+        try:
+            result = supabase.table('courses').select('title').filter('id', 'eq', course_id).execute()
+            if result.data and len(result.data) > 0:
+                course_title = result.data[0]['title']
+        except:
+            course_title = "Course"
+
+        # Insert enrollment record
+        try:
+            supabase.table('enrollments').insert({
+                'student_id': user_id,
+                'course_id': course_id,
+                'status': 'active'
+            }).execute()
+        except Exception as e:
+            # If RLS policy fails, try with admin bypass
+            try:
+                supabase.rpc('disable_rls_for_admin', params={}).execute()
+                supabase.table('enrollments').insert({
+                    'student_id': user_id,
+                    'course_id': course_id,
+                    'status': 'active'
+                }).execute()
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+            except:
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+                raise e
+
+        flash(f'Successfully enrolled in {course_title}!', 'success')
+        return redirect(url_for('course_detail', course_id=course_id))
+    except Exception as e:
+        flash(f'Error enrolling in course: {str(e)}', 'error')
+        return redirect(url_for('course_detail', course_id=course_id))
+
+
+@app.route('/course/<course_id>/unenroll', methods=['POST'])
+@login_required
+def unenroll_course(course_id):
+    try:
+        user_id = session.get('user_id')
+
+        # Find course title by ID
+        course_title = "Course"
+        try:
+            result = supabase.table('courses').select('title').filter('id', 'eq', course_id).execute()
+            if result.data and len(result.data) > 0:
+                course_title = result.data[0]['title']
+        except:
+            course_title = "Course"
+
+        # Remove enrollment record
+        try:
+            supabase.table('enrollments').delete().filter('student_id', 'eq', user_id).filter('course_id', 'eq', course_id).execute()
+        except Exception as e:
+            # If RLS policy fails, try with admin bypass
+            try:
+                supabase.rpc('disable_rls_for_admin', params={}).execute()
+                supabase.table('enrollments').delete().filter('student_id', 'eq', user_id).filter('course_id', 'eq', course_id).execute()
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+            except:
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+                raise e
+
+        flash(f'Successfully unenrolled from {course_title}.', 'success')
+        return redirect(url_for('course_detail', course_id=course_id))
+    except Exception as e:
+        flash(f'Error unenrolling from course: {str(e)}', 'error')
+        return redirect(url_for('course_detail', course_id=course_id))
+
+
+@app.route('/profile')
+@login_required
+def profile():
+    try:
+        # Fetch user data from Supabase
+        user_id = session.get('user_id')
+        result = supabase.table('profiles').select('*').filter('id', user_id).execute()
+
+        if result.data and len(result.data) > 0:
+            user_data = result.data[0]
+            return render_template('profile.html',
+                                 user=user_data,
+                                 username=session.get('username'))
+        else:
+            flash('User data not found.', 'error')
+            return redirect(url_for('dashboard'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/edit-profile', methods=['GET', 'POST'])
+@login_required
+def edit_profile():
+    try:
+        # Fetch current user data
+        user_id = session.get('user_id')
+        result = supabase.table('profiles').select('*').filter('id', user_id).execute()
+
+        if not result.data or len(result.data) == 0:
+            flash('User data not found.', 'error')
+            return redirect(url_for('profile'))
+
+        user_data = result.data[0]
+
+        if request.method == 'POST':
+            name = request.form.get('name')
+            email = request.form.get('email')
+
+            # Validate required fields
+            if not name or not email:
+                flash('Name and email are required.', 'error')
+                return render_template('edit_profile.html',
+                                     user=user_data,
+                                     username=session.get('username'))
+
+            # Check if email is already taken by another user
+            existing_user = supabase.table('profiles').select('id').filter('email', 'eq', email).neq('id', user_id).execute()
+            if existing_user.data:
+                flash('Email is already registered to another account.', 'error')
+                return render_template('edit_profile.html',
+                                     user=user_data,
+                                     username=session.get('username'))
+
+            # Update user data
+            supabase.table('profiles').update({
+                'name': name,
+                'email': email
+            }).filter('id', 'eq', user_id).execute()
+
+            # Update session data
+            session['username'] = name
+            session['email'] = email
+
+            flash('Profile updated successfully!', 'success')
+            return redirect(url_for('profile'))
+
+        return render_template('edit_profile.html',
+                             user=user_data,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('profile'))
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('You have been logged out successfully.', 'success')
+    return redirect(url_for('login'))
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email')
+
+        if not email:
+            flash('Email is required.', 'error')
+            return redirect(url_for('forgot_password'))
+
+        try:
+            # Check if email exists in database
+            existing_user = supabase.table('profiles').select('email').filter('email', 'eq', email).execute()
+            if not existing_user.data:
+                flash('No account found with this email address.', 'error')
+                return redirect(url_for('forgot_password'))
+
+            # Generate and store password reset OTP
+            reset_otp = generate_otp()
+            expiry = (datetime.now() + timedelta(minutes=10)).isoformat()
+            password_reset_storage[email] = {
+                'otp': reset_otp,
+                'expiry': expiry
+            }
+
+            # In production, you would send the OTP via email/SMS here
+            print(f"\n{'='*50}")
+            print(f"PASSWORD RESET OTP for {email}: {reset_otp}")
+            print(f"Expires at: {expiry}")
+            print("="*50 + "\n")
+
+            flash('Password reset code sent to your email!', 'info')
+            return redirect(url_for('verify_reset_otp', email=email))
+
+        except Exception as e:
+            flash(f'An error occurred: {str(e)}', 'error')
+            return redirect(url_for('forgot_password'))
+
+    return render_template('forgot_password.html')
+
+
+@app.route('/verify-reset-otp/<email>', methods=['GET', 'POST'])
+def verify_reset_otp(email):
+    if request.method == 'POST':
+        otp = request.form.get('otp')
+
+        if not otp:
+            flash('Please enter the reset code.', 'error')
+            return redirect(url_for('verify_reset_otp', email=email))
+
+        # Verify password reset OTP
+        stored_otp = password_reset_storage.get(email, {}).get('otp')
+        expiry_time = password_reset_storage.get(email, {}).get('expiry')
+
+        if not stored_otp or datetime.now() > datetime.fromisoformat(expiry_time):
+            flash('Reset code has expired. Please request a new one.', 'error')
+            password_reset_storage.pop(email, None)
+            return redirect(url_for('forgot_password'))
+
+        if otp != stored_otp:
+            flash('Invalid reset code. Please try again.', 'error')
+            return render_template('verify_reset_otp.html', email=email)
+
+        # Reset OTP verified, redirect to new password page
+        flash('Reset code verified! Please set your new password.', 'success')
+        return redirect(url_for('set_new_password', email=email))
+
+    # Check if reset OTP exists for this email
+    if email not in password_reset_storage:
+        flash('Please request a password reset first.', 'error')
+        return redirect(url_for('forgot_password'))
+
+    return render_template('verify_reset_otp.html', email=email)
+
+
+@app.route('/resend-reset-otp', methods=['POST'])
+def resend_reset_otp():
+    email = request.form.get('email')
+    if not email:
+        flash('Email is required to resend reset code', 'error')
+        return redirect(url_for('forgot_password'))
+
+    # Generate new password reset OTP
+    reset_otp = generate_otp()
+    expiry = (datetime.now() + timedelta(minutes=10)).isoformat()
+
+    if email in password_reset_storage:
+        password_reset_storage[email].update({
+            'otp': reset_otp,
+            'expiry': expiry
+        })
+    else:
+        password_reset_storage[email] = {
+            'otp': reset_otp,
+            'expiry': expiry
+        }
+
+    # In production, send the OTP via email/SMS
+    print(f"\n{'='*50}")
+    print(f"NEW PASSWORD RESET OTP for {email}: {reset_otp}")
+    print(f"Expires at: {expiry}")
+    print("="*50 + "\n")
+
+    flash('New reset code sent!', 'info')
+    return redirect(url_for('verify_reset_otp', email=email))
+
+
+@app.route('/set-new-password/<email>', methods=['GET', 'POST'])
+def set_new_password(email):
+    if request.method == 'POST':
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+
+        # Validation
+        if not new_password or not confirm_password:
+            flash('Both password fields are required.', 'error')
+            return redirect(url_for('set_new_password', email=email))
+
+        if new_password != confirm_password:
+            flash('Passwords do not match.', 'error')
+            return redirect(url_for('set_new_password', email=email))
+
+        if len(new_password) < 6:
+            flash('Password must be at least 6 characters long.', 'error')
+            return redirect(url_for('set_new_password', email=email))
+
+        try:
+            # Verify user exists
+            existing_user = supabase.table('profiles').select('email').filter('email', 'eq', email).execute()
+            if not existing_user.data:
+                flash('Invalid request. Please try again.', 'error')
+                return redirect(url_for('forgot_password'))
+
+            # Hash new password and update
+            new_password_hash = generate_password_hash(new_password)
+            supabase.table('profiles').update({
+                'password_hash': new_password_hash
+            }).filter('email', 'eq', email).execute()
+
+            # Clean up
+            password_reset_storage.pop(email, None)
+
+            flash('Password updated successfully! Please log in with your new password.', 'success')
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            flash(f'An error occurred: {str(e)}', 'error')
+            return redirect(url_for('set_new_password', email=email))
+
+    # Check if user has permission to reset password (has valid reset token)
+    if email not in password_reset_storage:
+        flash('Please request a password reset first.', 'error')
+        return redirect(url_for('forgot_password'))
+
+    return render_template('set_new_password.html', email=email)
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login'))
+
+        # Check if user is admin
+        user_id = session.get('user_id')
+        result = supabase.table('profiles').select('role').filter('id', 'eq', user_id).execute()
+        if result.data and result.data[0]['role'] == 'admin':
+            return f(*args, **kwargs)
+        else:
+            flash('Access denied. Admin privileges required.', 'error')
+            return redirect(url_for('dashboard'))
+    return decorated_function
+
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    # Sample statistics (in production, calculate from database)
+    enrolled_courses = 2
+    completed_courses = 1
+    total_hours = 48
+
+    return render_template('dashboard.html',
+                         username=session.get('username'),
+                         enrolled_courses=enrolled_courses,
+                         completed_courses=completed_courses,
+                         total_hours=total_hours)
+
+
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    try:
+        # Get system statistics
+        users_result = supabase.table('profiles').select('*').execute()
+        users_data = users_result.data if users_result.data else []
+
+        total_users = len(users_data)
+
+        # Count users by role safely
+        students = len([user for user in users_data if user.get('role') == 'student'])
+        teachers = len([user for user in users_data if user.get('role') == 'teacher'])
+        admins = len([user for user in users_data if user.get('role') == 'admin'])
+
+        # Recent users (last 5)
+        recent_users = users_data[-5:] if users_data else []
+
+        return render_template('admin_dashboard.html',
+                             total_users=total_users,
+                             students=students,
+                             teachers=teachers,
+                             admins=admins,
+                             recent_users=recent_users,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    try:
+        # Get all users
+        result = supabase.table('profiles').select('*').order('created_at', desc=True).execute()
+        users = result.data if result.data else []
+
+        return render_template('admin_users.html',
+                             users=users,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/users/edit/<user_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_user(user_id):
+    try:
+        # Get user data
+        result = supabase.table('profiles').select('*').filter('id', user_id).execute()
+        if not result.data:
+            flash('User not found.', 'error')
+            return redirect(url_for('admin_users'))
+
+        user_data = result.data[0]
+
+        if request.method == 'POST':
+            name = request.form.get('name')
+            email = request.form.get('email')
+            role = request.form.get('role')
+
+            # Validate required fields
+            if not all([name, email, role]):
+                flash('All fields are required.', 'error')
+                return render_template('admin_edit_user.html',
+                                     user=user_data,
+                                     username=session.get('username'))
+
+            # Check if email is already taken by another user
+            existing_user = supabase.table('profiles').select('id').filter('email', 'eq', email).neq('id', user_id).execute()
+            if existing_user.data:
+                flash('Email is already registered to another account.', 'error')
+                return render_template('admin_edit_user.html',
+                                     user=user_data,
+                                     username=session.get('username'))
+
+            # Update user data
+            supabase.table('profiles').update({
+                'name': name,
+                'email': email,
+                'role': role
+            }).filter('id', user_id).execute()
+
+            flash('User updated successfully!', 'success')
+            return redirect(url_for('admin_users'))
+
+        return render_template('admin_edit_user.html',
+                             user=user_data,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_users'))
+
+
+@app.route('/admin/users/delete/<user_id>', methods=['POST'])
+@admin_required
+def admin_delete_user(user_id):
+    try:
+        # Prevent admin from deleting themselves
+        if user_id == session.get('user_id'):
+            flash('You cannot delete your own account.', 'error')
+            return redirect(url_for('admin_users'))
+
+        # Delete user
+        supabase.table('profiles').delete().filter('id', 'eq', user_id).execute()
+
+        flash('User deleted successfully!', 'success')
+        return redirect(url_for('admin_users'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_users'))
+
+
+@app.route('/admin/courses')
+@admin_required
+def admin_courses():
+    try:
+        # Load courses from Supabase
+        result = supabase.table('courses').select('*').order('created_at', desc=True).execute()
+        courses = result.data if result.data else []
+
+        # Convert Supabase data format to match template expectations
+        formatted_courses = []
+        for course in courses:
+            formatted_course = {
+                'id': course['id'],
+                'title': course['title'],
+                'description': course['description'],
+                'instructor': 'Teacher',  # Will be populated from teacher_uuid later
+                'duration': course['duration'],
+                'level': course['level'],
+                'category': course['category'],
+                'price': f"${course['price']}" if course['price'] > 0 else 'Free',
+                'status': course['status'],
+                'students': 0,  # Will be calculated from enrollments
+                'rating': '0.0',  # Will be calculated from reviews
+                'color': 'blue',  # Default color
+                'icon': 'fa-graduation-cap'  # Default icon
+            }
+            formatted_courses.append(formatted_course)
+
+        # If no courses in database, use sample data for demo
+        if not formatted_courses:
+            formatted_courses = [
+                {
+                    'id': 'sample1',
+                    'title': 'Mathematics Fundamentals',
+                    'description': 'Learn the basics of algebra, geometry, and calculus.',
+                    'instructor': 'Dr. Sarah Johnson',
+                    'duration': '8 weeks',
+                    'students': 1247,
+                    'rating': '4.8',
+                    'level': 'Beginner',
+                    'status': 'active',
+                    'category': 'Mathematics',
+                    'color': 'blue',
+                    'icon': 'fa-square-root-alt'
+                },
+                {
+                    'id': 'sample2',
+                    'title': 'Physics for Engineers',
+                    'description': 'Comprehensive physics course covering mechanics and thermodynamics.',
+                    'instructor': 'Prof. Michael Chen',
+                    'duration': '12 weeks',
+                    'students': 892,
+                    'rating': '4.9',
+                    'level': 'Intermediate',
+                    'status': 'active',
+                    'category': 'Physics',
+                    'color': 'green',
+                    'icon': 'fa-atom'
+                },
+                {
+                    'id': 'sample3',
+                    'title': 'Computer Science Basics',
+                    'description': 'Introduction to programming and algorithms.',
+                    'instructor': 'Dr. Emily Rodriguez',
+                    'duration': '10 weeks',
+                    'students': 2156,
+                    'rating': '4.7',
+                    'level': 'Beginner',
+                    'status': 'active',
+                    'category': 'Computer Science',
+                    'color': 'purple',
+                    'icon': 'fa-code'
+                }
+            ]
+
+        # Calculate statistics
+        total_courses = len(formatted_courses)
+        total_students = sum(course.get('students', 0) for course in formatted_courses)
+        average_rating = 0.0
+        if formatted_courses:
+            ratings = [float(course.get('rating', '0')) for course in formatted_courses if course.get('rating')]
+            if ratings:
+                average_rating = sum(ratings) / len(ratings)
+
+        # Calculate additional stats
+        active_courses = len([c for c in formatted_courses if c.get('status') == 'active'])
+        inactive_courses = len([c for c in formatted_courses if c.get('status') == 'inactive'])
+        draft_courses = len([c for c in formatted_courses if c.get('status') == 'draft'])
+
+        return render_template('admin_courses.html',
+                             courses=formatted_courses,
+                             total_courses=total_courses,
+                             total_students=total_students,
+                             average_rating=round(average_rating, 1),
+                             active_courses=active_courses,
+                             inactive_courses=inactive_courses,
+                             draft_courses=draft_courses,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/courses/add', methods=['GET', 'POST'])
+@admin_required
+def admin_add_course():
+    if request.method == 'POST':
+        title = request.form.get('title')
+        description = request.form.get('description')
+        instructor = request.form.get('instructor')
+        duration = request.form.get('duration')
+        level = request.form.get('level')
+        category = request.form.get('category', 'General')
+        price = request.form.get('price', 'Free')
+        status = request.form.get('status', 'active')
+
+        # Validate required fields
+        if not all([title, description, instructor, duration, level]):
+            flash('All fields are required.', 'error')
+            return render_template('admin_add_course.html',
+                                 username=session.get('username'))
+
+        try:
+            # Generate course UUID
+            import uuid
+            course_uuid = str(uuid.uuid4())
+
+            # Get current user ID for teacher_uuid
+            user_id = session.get('user_id')
+
+            # Insert course into Supabase
+            result = supabase.table('courses').insert({
+                'id': course_uuid,
+                'title': title,
+                'description': description,
+                'category': category,
+                'level': level,
+                'duration': duration,
+                'language': 'English',
+                'teacher_uuid': user_id,
+                'price': 0 if price == 'Free' else float(price.replace('$', '')),
+                'status': status
+            }).execute()
+
+            flash(f'Course "{title}" added successfully!', 'success')
+            return redirect(url_for('admin_courses'))
+
+        except Exception as e:
+            flash(f'Error creating course: {str(e)}', 'error')
+            return render_template('admin_add_course.html',
+                                 username=session.get('username'))
+
+    return render_template('admin_add_course.html',
+                         username=session.get('username'))
+
+
+@app.route('/admin/courses/edit/<course_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_course(course_id):
+    try:
+        # Get course details
+        course_result = supabase.table('courses').select('*').filter('id', 'eq', course_id).execute()
+        if not course_result.data:
+            flash('Course not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        course = course_result.data[0]
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            level = request.form.get('level')
+            category = request.form.get('category', 'General')
+            duration = request.form.get('duration')
+            price = request.form.get('price', 'Free')
+            status = request.form.get('status', 'active')
+
+            # Validate required fields
+            if not all([title, description, level, duration]):
+                flash('All fields are required.', 'error')
+                return render_template('admin_edit_course.html',
+                                     course=course,
+                                     username=session.get('username'))
+
+            try:
+                # Update course in Supabase
+                supabase.table('courses').update({
+                    'title': title,
+                    'description': description,
+                    'level': level,
+                    'category': category,
+                    'duration': duration,
+                    'price': 0 if price == 'Free' else float(price.replace('$', '')),
+                    'status': status
+                }).filter('id', 'eq', course_id).execute()
+
+                flash(f'Course "{title}" updated successfully!', 'success')
+                return redirect(url_for('admin_courses'))
+
+            except Exception as e:
+                flash(f'Error updating course: {str(e)}', 'error')
+                return render_template('admin_edit_course.html',
+                                     course=course,
+                                     username=session.get('username'))
+
+        return render_template('admin_edit_course.html',
+                             course=course,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+
+@app.route('/admin/courses/<course_id>/modules')
+@admin_required
+def admin_course_modules(course_id):
+    try:
+        # Get course details
+        course_result = supabase.table('courses').select('*').filter('id', 'eq', course_id).execute()
+        if not course_result.data:
+            flash('Course not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        course = course_result.data[0]
+
+        # Get modules for this course
+        modules_result = supabase.table('modules').select('*').eq('course_id', course_id).order('order_index').execute()
+        modules = modules_result.data if modules_result.data else []
+
+        return render_template('admin_course_modules.html',
+                             course=course,
+                             modules=modules,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+
+@app.route('/admin/courses/<course_id>/modules/add', methods=['GET', 'POST'])
+@admin_required
+def admin_add_module(course_id):
+    try:
+        # Verify course exists and user has permission
+        course_result = supabase.table('courses').select('*').filter('id', 'eq', course_id).execute()
+        if not course_result.data:
+            flash('Course not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        course = course_result.data[0]
+
+        # Check if user is the teacher or admin
+        user_id = session.get('user_id')
+        if course['teacher_uuid'] != user_id and not (supabase.table('profiles').select('role').filter('id', user_id).execute().data[0]['role'] == 'admin'):
+            flash('Access denied.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            order_index = request.form.get('order_index', 1)
+            estimated_time = request.form.get('estimated_time', '1 hour')
+
+            # Validate required fields
+            if not all([title, description]):
+                flash('Title and description are required.', 'error')
+                return render_template('admin_add_module.html',
+                                     course=course,
+                                     username=session.get('username'))
+
+            try:
+                # Temporarily disable RLS for admin operations
+                supabase.rpc('disable_rls_for_admin', params={}).execute()
+
+                # Insert new module
+                result = supabase.table('modules').insert({
+                    'course_id': course_id,
+                    'title': title,
+                    'description': description,
+                    'order_index': int(order_index),
+                    'estimated_time': estimated_time
+                }).execute()
+
+                # Re-enable RLS
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+
+                flash(f'Module "{title}" added successfully!', 'success')
+                return redirect(url_for('admin_course_modules', course_id=course_id))
+
+            except Exception as e:
+                # Make sure to re-enable RLS if there's an error
+                try:
+                    supabase.rpc('enable_rls_for_admin', params={}).execute()
+                except:
+                    pass
+                flash(f'Error creating module: {str(e)}', 'error')
+                return render_template('admin_add_module.html',
+                                     course=course,
+                                     username=session.get('username'))
+
+        return render_template('admin_add_module.html',
+                             course=course,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+
+@app.route('/admin/modules/edit/<module_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_module(module_id):
+    try:
+        # Get module details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        module = module_result.data[0]
+
+        # Get course details
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            order_index = request.form.get('order_index', 1)
+            estimated_time = request.form.get('estimated_time', '1 hour')
+
+            # Validate required fields
+            if not all([title, description]):
+                flash('Title and description are required.', 'error')
+                return render_template('admin_edit_module.html',
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+            try:
+                # Update module in Supabase
+                supabase.table('modules').update({
+                    'title': title,
+                    'description': description,
+                    'order_index': int(order_index),
+                    'estimated_time': estimated_time
+                }).eq('id', module_id).execute()
+
+                flash(f'Module "{title}" updated successfully!', 'success')
+                return redirect(url_for('admin_course_modules', course_id=course['id']))
+
+            except Exception as e:
+                flash(f'Error updating module: {str(e)}', 'error')
+                return render_template('admin_edit_module.html',
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+        return render_template('admin_edit_module.html',
+                             module=module,
+                             course=course,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+
+@app.route('/admin/modules/<module_id>/tasks')
+@admin_required
+def admin_module_tasks(module_id):
+    try:
+        # Get module details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        module = module_result.data[0]
+
+        # Get course details
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Get tasks for this module
+        tasks_result = supabase.table('tasks').select('*').eq('module_id', module_id).order('order_index').execute()
+        tasks = tasks_result.data if tasks_result.data else []
+
+        return render_template('admin_module_tasks.html',
+                             module=module,
+                             course=course,
+                             tasks=tasks,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+
+@app.route('/admin/tasks/edit/<task_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_task(task_id):
+    try:
+        # Get task details
+        task_result = supabase.table('tasks').select('*').filter('id', 'eq', task_id).execute()
+        if not task_result.data:
+            flash('Task not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        task = task_result.data[0]
+
+        # Parse existing quiz questions if this is a quiz task
+        existing_questions = []
+        if task.get('type') == 'quiz' and task.get('quiz_data'):
+            existing_questions = parse_quiz_questions(task['quiz_data'])
+
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', task['module_id']).execute()
+        module = module_result.data[0] if module_result.data else {}
+
+        course_result = supabase.table('courses').select('*').eq('id', module.get('course_id')).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            task_type = request.form.get('type')
+            order_index = request.form.get('order_index', 1)
+            estimated_time = request.form.get('estimated_time', '30 minutes')
+            # Handle resource_link based on task type
+            form_resource_link = request.form.get('resource_link', '').strip()
+            current_resource_link = task.get('resource_link', '')
+
+            # If form has a resource_link value, use it; otherwise keep current value
+            if form_resource_link:
+                resource_link = form_resource_link
+            else:
+                resource_link = current_resource_link
+
+            print(f"DEBUG: Edit task - form_resource_link='{form_resource_link}', current_resource_link='{current_resource_link}', final_resource_link='{resource_link}'")
+            is_mandatory = request.form.get('is_mandatory') == 'on'
+
+            # Handle quiz-specific settings
+            if task_type == 'quiz':
+                questions_data = []
+
+                # Collect all questions from form data
+                question_counter = 1
+                while True:
+                    question_text = request.form.get(f'question_text_{question_counter}')
+                    option_a = request.form.get(f'option_a_{question_counter}')
+                    option_b = request.form.get(f'option_b_{question_counter}')
+                    option_c = request.form.get(f'option_c_{question_counter}')
+                    option_d = request.form.get(f'option_d_{question_counter}')
+                    correct_answer = request.form.get(f'correct_answer_{question_counter}')
+
+                    if not question_text or not all([option_a, option_b, option_c, option_d]) or not correct_answer:
+                        break
+
+                    questions_data.append({
+                        'question': question_text,
+                        'options': [
+                            f'A) {option_a}',
+                            f'B) {option_b}',
+                            f'C) {option_c}',
+                            f'D) {option_d}'
+                        ],
+                        'correct_answer': correct_answer
+                    })
+                    question_counter += 1
+
+                if not questions_data:
+                    flash('At least one complete quiz question is required.', 'error')
+                    return render_template('admin_edit_task.html',
+                                         task=task,
+                                         module=module,
+                                         course=course,
+                                         username=session.get('username'))
+
+                # Convert questions to formatted text for storage
+                quiz_data = format_quiz_questions(questions_data)
+                print(f"DEBUG: Edit task - quiz_data='{quiz_data}'")
+                passing_score = int(request.form.get('passing_score', 70))
+                max_attempts = int(request.form.get('max_attempts', 3))
+                time_limit = int(request.form.get('time_limit', 0))
+                question_order = request.form.get('question_order', 'sequential')
+                quiz_instructions = request.form.get('quiz_instructions', '')
+
+                # Use quiz_data for quiz content, description for general description
+                description = f'Quiz with {len(questions_data)} questions'  # General description
+
+            # Handle assignment-specific settings
+            elif task_type == 'assignment':
+                assignment_instructions = request.form.get('assignment_instructions', '')
+                due_date = request.form.get('due_date')
+                max_file_size = int(request.form.get('max_file_size', 10))
+                allow_late_submissions = request.form.get('allow_late_submissions') == 'on'
+
+                # Use assignment_instructions for task description
+                description = f'Assignment: {assignment_instructions[:100]}...' if assignment_instructions else 'Assignment submission required'
+
+            # Handle reading-specific settings
+            elif task_type == 'reading':
+                reading_instructions = request.form.get('reading_instructions', '')
+
+            # Handle discussion-specific settings
+            elif task_type == 'discussion':
+                discussion_prompt = request.form.get('discussion_prompt', '')
+                min_posts_required = int(request.form.get('min_posts_required', 1))
+                discussion_duration_days = request.form.get('discussion_duration_days', '7')
+                require_replies = request.form.get('require_replies') == 'on'
+
+            # Validate required fields
+            if not all([title, description, task_type]):
+                flash('Title, description, and type are required.', 'error')
+                return render_template('admin_edit_task.html',
+                                     task=task,
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+            try:
+                # Temporarily disable RLS for admin operations
+                supabase.rpc('disable_rls_for_admin', params={}).execute()
+
+                # Prepare task data
+                update_data = {
+                    'title': title,
+                    'description': description,
+                    'type': task_type,
+                    'order_index': int(order_index),
+                    'estimated_time': estimated_time,
+                    'resource_link': resource_link,
+                    'is_mandatory': is_mandatory
+                }
+
+                # Add quiz-specific fields if this is a quiz
+                if task_type == 'quiz':
+                    update_data.update({
+                        'quiz_data': quiz_data,
+                        'passing_score': passing_score,
+                        'max_attempts': max_attempts,
+                        'time_limit': time_limit,
+                        'question_order': question_order,
+                        'quiz_instructions': quiz_instructions
+                    })
+
+                # Add assignment-specific fields if this is an assignment
+                elif task_type == 'assignment':
+                    update_data.update({
+                        'assignment_instructions': assignment_instructions,
+                        'due_date': due_date,
+                        'max_file_size': max_file_size,
+                        'allow_late_submissions': allow_late_submissions
+                    })
+
+                # Add reading-specific fields if this is a reading task
+                elif task_type == 'reading':
+                    update_data.update({
+                        'reading_instructions': reading_instructions
+                    })
+
+                # Add discussion-specific fields if this is a discussion task
+                elif task_type == 'discussion':
+                    update_data.update({
+                        'discussion_prompt': discussion_prompt,
+                        'min_posts_required': min_posts_required,
+                        'discussion_duration_days': discussion_duration_days,
+                        'require_replies': require_replies
+                    })
+
+                print(f"DEBUG: Updating task with data: {update_data}")
+                result = supabase.table('tasks').update(update_data).eq('id', task_id).execute()
+                print(f"DEBUG: Update result: {result}")
+
+                # Re-enable RLS
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+
+                flash(f'Task "{title}" updated successfully!', 'success')
+                return redirect(url_for('admin_module_tasks', module_id=module['id']))
+
+            except Exception as e:
+                # Make sure to re-enable RLS if there's an error
+                try:
+                    supabase.rpc('enable_rls_for_admin', params={}).execute()
+                except:
+                    pass
+                flash(f'Error updating task: {str(e)}', 'error')
+                return render_template('admin_edit_task.html',
+                                     task=task,
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+        return render_template('admin_edit_task.html',
+                             task=task,
+                             module=module,
+                             course=course,
+                             existing_questions=existing_questions,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+
+@app.route('/admin/modules/<module_id>/tasks/add', methods=['GET', 'POST'])
+@admin_required
+def admin_add_task(module_id):
+    try:
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        module = module_result.data[0]
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            task_type = request.form.get('type')
+            order_index = request.form.get('order_index', 1)
+            estimated_time = request.form.get('estimated_time', '30 minutes')
+            resource_link = request.form.get('resource_link', '')
+            is_mandatory = request.form.get('is_mandatory') == 'on'
+
+            # Initialize task-specific variables with defaults
+            quiz_data = ''
+            passing_score = 70
+            max_attempts = 3
+            time_limit = 0
+            question_order = 'sequential'
+            quiz_instructions = ''
+            assignment_instructions = ''
+            due_date = None
+            max_file_size = 10
+            allow_late_submissions = False
+            reading_instructions = ''
+            discussion_prompt = ''
+            min_posts_required = 1
+            discussion_duration_days = 7
+            require_replies = False
+
+            # Handle quiz-specific settings
+            if task_type == 'quiz':
+                questions_data = []
+
+                # Collect all questions from form data
+                question_counter = 1
+                while True:
+                    question_text = request.form.get(f'question_text_{question_counter}')
+                    option_a = request.form.get(f'option_a_{question_counter}')
+                    option_b = request.form.get(f'option_b_{question_counter}')
+                    option_c = request.form.get(f'option_c_{question_counter}')
+                    option_d = request.form.get(f'option_d_{question_counter}')
+                    correct_answer = request.form.get(f'correct_answer_{question_counter}')
+
+                    if not question_text or not all([option_a, option_b, option_c, option_d]) or not correct_answer:
+                        break
+
+                    questions_data.append({
+                        'question': question_text,
+                        'options': [
+                            f'A) {option_a}',
+                            f'B) {option_b}',
+                            f'C) {option_c}',
+                            f'D) {option_d}'
+                        ],
+                        'correct_answer': correct_answer
+                    })
+                    question_counter += 1
+
+                if not questions_data:
+                    flash('At least one complete quiz question is required.', 'error')
+                    return render_template('admin_add_task.html',
+                                         module=module,
+                                         course=course,
+                                         username=session.get('username'))
+
+                # Convert questions to formatted text for storage
+                quiz_data = format_quiz_questions(questions_data)
+                passing_score = int(request.form.get('passing_score', 70))
+                max_attempts = int(request.form.get('max_attempts', 3))
+                time_limit = int(request.form.get('time_limit', 0))
+                question_order = request.form.get('question_order', 'sequential')
+                quiz_instructions = request.form.get('quiz_instructions', '')
+
+                # Use quiz_data for quiz content, description for general description
+                description = f'Quiz with {len(questions_data)} questions'  # General description
+
+            # Handle assignment-specific settings
+            elif task_type == 'assignment':
+                assignment_instructions = request.form.get('assignment_instructions', '')
+                due_date = request.form.get('due_date')
+                max_file_size = int(request.form.get('max_file_size', 10))
+                allow_late_submissions = request.form.get('allow_late_submissions') == 'on'
+
+                # Use assignment_instructions for task description
+                description = f'Assignment: {assignment_instructions[:100]}...' if assignment_instructions else 'Assignment submission required'
+
+            # Handle reading-specific settings
+            elif task_type == 'reading':
+                reading_instructions = request.form.get('reading_instructions', '')
+
+            # Handle discussion-specific settings
+            elif task_type == 'discussion':
+                discussion_prompt = request.form.get('discussion_prompt', '')
+                min_posts_required = int(request.form.get('min_posts_required', 1))
+                discussion_duration_days = request.form.get('discussion_duration_days', '7')
+                require_replies = request.form.get('require_replies') == 'on'
+
+            # Validate required fields
+            if not all([title, description, task_type]):
+                flash('Title, description, and type are required.', 'error')
+                return render_template('admin_add_task.html',
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+            try:
+                # Temporarily disable RLS for admin operations
+                supabase.rpc('disable_rls_for_admin', params={}).execute()
+
+                # Prepare task data
+                task_data = {
+                    'module_id': module_id,
+                    'title': title,
+                    'description': description,
+                    'type': task_type,
+                    'order_index': int(order_index),
+                    'estimated_time': estimated_time,
+                    'resource_link': resource_link,
+                    'is_mandatory': is_mandatory
+                }
+
+                # Add quiz-specific fields if this is a quiz
+                if task_type == 'quiz':
+                    task_data.update({
+                        'quiz_data': quiz_data,
+                        'passing_score': passing_score,
+                        'max_attempts': max_attempts,
+                        'time_limit': time_limit,
+                        'question_order': question_order,
+                        'quiz_instructions': quiz_instructions
+                    })
+
+                # Add assignment-specific fields if this is an assignment
+                elif task_type == 'assignment':
+                    task_data.update({
+                        'assignment_instructions': assignment_instructions,
+                        'due_date': due_date,
+                        'max_file_size': max_file_size,
+                        'allow_late_submissions': allow_late_submissions
+                    })
+
+                # Add reading-specific fields if this is a reading task
+                elif task_type == 'reading':
+                    task_data.update({
+                        'reading_instructions': reading_instructions
+                    })
+
+                # Add discussion-specific fields if this is a discussion task
+                elif task_type == 'discussion':
+                    task_data.update({
+                        'discussion_prompt': discussion_prompt,
+                        'min_posts_required': min_posts_required,
+                        'discussion_duration_days': discussion_duration_days,
+                        'require_replies': require_replies
+                    })
+
+                # Insert new task
+                result = supabase.table('tasks').insert(task_data).execute()
+
+                # Re-enable RLS
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+
+                flash(f'Task "{title}" added successfully!', 'success')
+                return redirect(url_for('admin_module_tasks', module_id=module_id))
+
+            except Exception as e:
+                # Make sure to re-enable RLS if there's an error
+                try:
+                    supabase.rpc('enable_rls_for_admin', params={}).execute()
+                except:
+                    pass
+                flash(f'Error creating task: {str(e)}', 'error')
+                return render_template('admin_add_task.html',
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+        return render_template('admin_add_task.html',
+                             module=module,
+                             course=course,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+
+@app.route('/admin/users/add', methods=['GET', 'POST'])
+@admin_required
+def admin_add_user():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        role = request.form.get('role', 'student')
+
+        # Validate required fields
+        if not all([name, email, password]):
+            flash('Name, email, and password are required.', 'error')
+            return render_template('admin_add_user.html',
+                                 username=session.get('username'))
+
+        # Check if email is already taken
+        existing_user = supabase.table('profiles').select('id').filter('email', 'eq', email).execute()
+        if existing_user.data:
+            flash('Email is already registered.', 'error')
+            return render_template('admin_add_user.html',
+                                 username=session.get('username'))
+
+        # Hash password and create user
+        password_hash = generate_password_hash(password)
+
+        try:
+            # Insert new user
+            result = supabase.table('profiles').insert({
+                'name': name,
+                'email': email,
+                'password_hash': password_hash,
+                'role': role
+            }).execute()
+
+            flash(f'User "{name}" created successfully!', 'success')
+            return redirect(url_for('admin_users'))
+
+        except Exception as e:
+            flash(f'Error creating user: {str(e)}', 'error')
+            return render_template('admin_add_user.html',
+                                 username=session.get('username'))
+
+@app.route('/task/<task_id>/submit', methods=['GET', 'POST'])
+@login_required
+def submit_assignment(task_id):
+    try:
+        user_id = session.get('user_id')
+
+        # Get task details
+        task_result = supabase.table('tasks').select('*').filter('id', 'eq', task_id).execute()
+        if not task_result.data:
+            flash('Task not found.', 'error')
+            return redirect(url_for('courses'))
+
+        task = task_result.data[0]
+
+        # Check if this is an assignment task
+        if task['type'] != 'assignment':
+            flash('This task does not accept file submissions.', 'error')
+            return redirect(url_for('courses'))
+
+        # Check if user is enrolled in the course
+        course_id = None
+        module_result = supabase.table('modules').select('course_id').filter('id', 'eq', task['module_id']).execute()
+        if module_result.data:
+            course_id = module_result.data[0]['course_id']
+
+        if course_id:
+            enrolled_result = supabase.table('enrollments').select('id').filter('student_id', 'eq', user_id).filter('course_id', 'eq', course_id).filter('status', 'eq', 'active').execute()
+            if not enrolled_result.data:
+                flash('You must be enrolled in this course to submit assignments.', 'error')
+                return redirect(url_for('courses'))
+
+        # Check if user already submitted this assignment
+        existing_submission = supabase.table('submissions').select('*').filter('student_id', 'eq', user_id).filter('task_id', 'eq', task_id).execute()
+        submission = existing_submission.data[0] if existing_submission.data else None
+
+        if request.method == 'POST':
+            # Handle file upload
+            if 'file' not in request.files:
+                flash('No file selected.', 'error')
+                return redirect(request.url)
+
+            file = request.files['file']
+            if file.filename == '':
+                flash('No file selected.', 'error')
+                return redirect(request.url)
+
+            # Validate file size
+            max_size = task.get('max_file_size', 10) * 1024 * 1024  # Convert MB to bytes
+            if len(file.read()) > max_size:
+                flash(f'File size exceeds maximum allowed size of {task.get("max_file_size", 10)}MB.', 'error')
+                return redirect(request.url)
+
+            # Reset file pointer
+            file.seek(0)
+
+            # Validate file type (basic check)
+            allowed_extensions = ['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'jpg', 'jpeg', 'png', 'gif']
+            if '.' not in file.filename or file.filename.split('.')[-1].lower() not in allowed_extensions:
+                flash('File type not allowed. Please upload PDF, Word document, text file, or image.', 'error')
+                return redirect(request.url)
+
+            try:
+                # Upload file to Supabase storage
+                bucket_name = 'student-submissions'
+                file_path = f"{user_id}/{task_id}/{file.filename}"
+
+                # Read file content as bytes for Supabase storage
+                file_content = file.read()
+
+                # Upload file
+                upload_result = supabase.storage.from_(bucket_name).upload(file_path, file_content)
+
+                if upload_result:
+                    # Get public URL
+                    file_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+
+                    # Reset file pointer for size calculation
+                    file.seek(0)
+                    file_size = len(file.read())
+
+                    # Save submission record
+                    submission_data = {
+                        'student_id': user_id,
+                        'task_id': task_id,
+                        'file_url': file_url,
+                        'file_name': file.filename,
+                        'file_size': file_size,
+                        'file_type': file.content_type,
+                        'status': 'submitted'
+                    }
+
+                    if submission:
+                        # Update existing submission
+                        supabase.table('submissions').update(submission_data).eq('id', submission['id']).execute()
+                        flash('Assignment updated successfully!', 'success')
+                    else:
+                        # Create new submission
+                        supabase.table('submissions').insert(submission_data).execute()
+                        flash('Assignment submitted successfully!', 'success')
+
+                    return redirect(url_for('my_submissions'))
+
+                else:
+                    flash('Error uploading file. Please try again.', 'error')
+
+            except Exception as e:
+                flash(f'Error submitting assignment: {str(e)}', 'error')
+
+        # Get course and module info for display
+        module = {}
+        course = {}
+
+        if task['module_id']:
+            module_result = supabase.table('modules').select('*').filter('id', 'eq', task['module_id']).execute()
+            if module_result.data:
+                module = module_result.data[0]
+                if module.get('course_id'):
+                    course_result = supabase.table('courses').select('*').filter('id', 'eq', module['course_id']).execute()
+                    if course_result.data:
+                        course = course_result.data[0]
+
+        return render_template('submit_assignment.html',
+                             task=task,
+                             module=module,
+                             course=course,
+                             submission=submission,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('courses'))
+
+
+@app.route('/my-submissions')
+@login_required
+def my_submissions():
+    try:
+        user_id = session.get('user_id')
+
+        # Get all submissions for current user
+        submissions_result = supabase.table('submissions').select('*').filter('student_id', 'eq', user_id).order('submitted_at', desc=True).execute()
+        submissions = submissions_result.data if submissions_result.data else []
+
+        # Get task and course info for each submission
+        for submission in submissions:
+            # Get task info
+            task_result = supabase.table('tasks').select('*').filter('id', 'eq', submission['task_id']).execute()
+            if task_result.data:
+                submission['task'] = task_result.data[0]
+
+                # Get module info
+                module_result = supabase.table('modules').select('*').filter('id', 'eq', submission['task']['module_id']).execute()
+                if module_result.data:
+                    submission['module'] = module_result.data[0]
+
+                    # Get course info
+                    course_result = supabase.table('courses').select('*').filter('id', 'eq', submission['module']['course_id']).execute()
+                    if course_result.data:
+                        submission['course'] = course_result.data[0]
+            else:
+                submission['task'] = {'title': 'Unknown Task'}
+                submission['module'] = {'title': 'Unknown Module'}
+                submission['course'] = {'title': 'Unknown Course'}
+
+        return render_template('my_submissions.html',
+                             submissions=submissions,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/admin/progress')
+@admin_required
+def admin_progress():
+    try:
+        # Get all students
+        students_result = supabase.table('profiles').select('*').eq('role', 'student').execute()
+        students = students_result.data if students_result.data else []
+
+        # Get all courses for reference
+        courses_result = supabase.table('courses').select('id, title').execute()
+        courses_dict = {c['id']: c['title'] for c in courses_result.data} if courses_result.data else {}
+
+        # Get enrollment and progress data for each student
+        students_data = []
+        course_metrics = {}
+        
+        # Initialize course metrics
+        for course_id in courses_dict:
+            course_metrics[course_id] = {
+                'title': courses_dict[course_id],
+                'total_students': 0,
+                'avg_progress': 0,
+                'completion_count': 0,
+                'total_quizzes': 0,
+                'avg_quiz_score': 0
+            }
+
+        for student in students:
+            student_id = student['id']
+
+            # Get enrollments with course details
+            enrollments_result = (supabase.table('enrollments')
+                               .select('course_id, status, progress_percentage, completed_at')
+                               .eq('student_id', student_id)
+                               .execute())
+            enrollments = enrollments_result.data if enrollments_result.data else []
+
+            # Get completed tasks and quiz attempts
+            completed_tasks_result = (supabase.table('progress')
+                                   .select('task_id, status, score')
+                                   .eq('student_id', student_id)
+                                   .eq('status', 'completed')
+                                   .execute())
+            
+            completed_tasks = completed_tasks_result.data if completed_tasks_result.data else []
+            
+            # Get quiz attempts
+            quiz_attempts_result = (supabase.table('quiz_attempts')
+                                 .select('task_id, score, passed')
+                                 .eq('student_id', student_id)
+                                 .execute())
+            quiz_attempts = quiz_attempts_result.data if quiz_attempts_result.data else []
+
+            # Calculate course-specific metrics
+            student_courses = {}
+            for enrollment in enrollments:
+                course_id = enrollment['course_id']
+                if course_id not in student_courses:
+                    student_courses[course_id] = {
+                        'progress': enrollment['progress_percentage'] or 0,
+                        'completed': 1 if enrollment['status'] == 'completed' else 0,
+                        'quiz_scores': []
+                    }
+                    
+                    # Update course metrics
+                    if course_id in course_metrics:
+                        course_metrics[course_id]['total_students'] += 1
+                        course_metrics[course_id]['completion_count'] += (1 if enrollment['status'] == 'completed' else 0)
+
+            # Process quiz attempts
+            for attempt in quiz_attempts:
+                # Find which course this quiz belongs to
+                task_result = (supabase.table('tasks')
+                            .select('module_id')
+                            .eq('id', attempt['task_id'])
+                            .execute())
+                
+                if task_result.data:
+                    module_id = task_result.data[0]['module_id']
+                    module_result = (supabase.table('modules')
+                                  .select('course_id')
+                                  .eq('id', module_id)
+                                  .execute())
+                    
+                    if module_result.data:
+                        course_id = module_result.data[0]['course_id']
+                        if course_id in student_courses:
+                            student_courses[course_id]['quiz_scores'].append(attempt['score'])
+                            
+                            # Update course metrics
+                            if course_id in course_metrics:
+                                course_metrics[course_id]['total_quizzes'] += 1
+                                course_metrics[course_id]['avg_quiz_score'] = (
+                                    (course_metrics[course_id]['avg_quiz_score'] * (course_metrics[course_id]['total_quizzes'] - 1) + attempt['score']) / 
+                                    course_metrics[course_id]['total_quizzes']
+                                )
+
+            # Calculate overall metrics for the student
+            total_tasks = 0
+            for course_id, data in student_courses.items():
+                # Get total tasks for this course
+                modules_result = (supabase.table('modules')
+                               .select('id')
+                               .eq('course_id', course_id)
+                               .execute())
+                
+                if modules_result.data:
+                    module_ids = [m['id'] for m in modules_result.data]
+                    tasks_result = (supabase.table('tasks')
+                                 .select('id')
+                                 .in_('module_id', module_ids)
+                                 .execute())
+                    
+                    course_task_count = len(tasks_result.data) if tasks_result.data else 0
+                    total_tasks += course_task_count
+
+            students_data.append({
+                'id': student['id'],
+                'name': student['name'],
+                'email': student['email'],
+                'enrollments': enrollments,
+                'completed_tasks': len(completed_tasks),
+                'total_tasks': total_tasks,
+                'overall_progress': round((len(completed_tasks) / total_tasks * 100), 1) if total_tasks > 0 else 0,
+                'courses': student_courses,
+                'quiz_attempts': quiz_attempts
+            })
+
+        # Calculate summary statistics
+        total_enrollments = sum(len(student['enrollments']) for student in students_data)
+        avg_progress = round(sum((student.get('overall_progress') or 0) for student in students_data) / len(students_data), 1) if students_data else 0
+        completion_rate = len([s for s in students_data if (s.get('overall_progress') or 0) > 80])
+
+        # Update course metrics with final calculations
+        for course_id, metrics in course_metrics.items():
+            if metrics['total_students'] > 0:
+                metrics['completion_rate'] = round((metrics['completion_count'] / metrics['total_students']) * 100, 1)
+            else:
+                metrics['completion_rate'] = 0
+
+        return render_template('admin_progress.html',
+                             students=students_data,
+                             courses=course_metrics,
+                             total_enrollments=total_enrollments,
+                             avg_progress=avg_progress,
+                             completion_rate=completion_rate,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        import traceback
+        traceback.print_exc()
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/course/<course_id>/analytics')
+@admin_required
+def course_analytics(course_id):
+    try:
+        # Get course details
+        course_result = supabase.table('courses').select('*').eq('id', course_id).execute()
+        if not course_result.data:
+            flash('Course not found', 'error')
+            return redirect(url_for('admin_progress'))
+        
+        course = course_result.data[0]
+        
+        # Get all modules for this course
+        modules_result = (supabase.table('modules')
+                        .select('id, title, order_index')
+                        .eq('course_id', course_id)
+                        .order('order_index')
+                        .execute())
+        
+        modules = modules_result.data if modules_result.data else []
+        
+        # Get all students enrolled in this course
+        enrollments_result = (supabase.table('enrollments')
+                            .select('student_id, progress_percentage, status, enrolled_at')
+                            .eq('course_id', course_id)
+                            .execute())
+        
+        student_ids = [e['student_id'] for e in enrollments_result.data] if enrollments_result.data else []
+        
+        # Get student details with comprehensive progress data
+        students_data = []
+        if student_ids:
+            students_result = (supabase.table('profiles')
+                            .select('id, name, email')
+                            .in_('id', student_ids)
+                            .execute())
+            
+            students = {s['id']: s for s in students_result.data} if students_result.data else {}
+
+            # Get tasks for each module
+            module_tasks = {}
+            for module in modules:
+                module_id = module['id']
+                tasks_result = supabase.table('tasks').select('id, title, type').eq('module_id', module_id).execute()
+                module_tasks[module_id] = tasks_result.data if tasks_result.data else []
+
+            # Get comprehensive progress for each student
+            for enrollment in enrollments_result.data:
+                student_id = enrollment['student_id']
+                if student_id not in students:
+                    continue
+
+                student = students[student_id]
+
+                # Initialize progress data
+                progress_data = {
+                    'completed_modules': 0,
+                    'total_modules': len(modules),
+                    'completed_tasks': 0,
+                    'total_tasks': sum(len(tasks) for tasks in module_tasks.values()),
+                    'quiz_attempts': 0,
+                    'quiz_scores': [],
+                    'assessments': [],
+                    'module_progress': {}
+                }
+
+                # Get completed tasks
+                if module_tasks:
+                    all_task_ids = [task['id'] for tasks in module_tasks.values() for task in tasks]
+                    if all_task_ids:
+                        completed_tasks_result = (supabase.table('progress')
+                                               .select('task_id, status')
+                                               .eq('student_id', student_id)
+                                               .in_('task_id', all_task_ids)
+                                               .eq('status', 'completed')
+                                               .execute())
+                        progress_data['completed_tasks'] = len(completed_tasks_result.data) if completed_tasks_result.data else 0
+
+                        # Calculate module completion
+                        for module_id, tasks in module_tasks.items():
+                            module_task_ids = [task['id'] for task in tasks]
+                            if module_task_ids:
+                                module_completed = (supabase.table('progress')
+                                                  .select('task_id')
+                                                  .eq('student_id', student_id)
+                                                  .in_('task_id', module_task_ids)
+                                                  .eq('status', 'completed')
+                                                  .execute())
+                                completed_count = len(module_completed.data) if module_completed.data else 0
+                                progress_data['module_progress'][module_id] = {
+                                    'completed': completed_count,
+                                    'total': len(module_task_ids),
+                                    'progress': round((completed_count / len(module_task_ids)) * 100, 1) if module_task_ids else 0
+                                }
+
+                # Get quiz attempts
+                quiz_attempts_result = (supabase.table('quiz_attempts')
+                                     .select('task_id, score, passed')
+                                     .eq('student_id', student_id)
+                                     .execute())
+                if quiz_attempts_result.data:
+                    progress_data['quiz_attempts'] = len(quiz_attempts_result.data)
+                    progress_data['quiz_scores'] = [attempt['score'] for attempt in quiz_attempts_result.data if attempt['score']]
+
+                # Get submissions (assessments)
+                submissions_result = (supabase.table('submissions')
+                                   .select('*')
+                                   .eq('student_id', student_id)
+                                   .execute())
+                if submissions_result.data:
+                    progress_data['assessments'] = submissions_result.data
+
+                # Calculate completion percentage
+                completion_percentage = 0
+                if progress_data['total_tasks'] > 0:
+                    completion_percentage = (progress_data['completed_tasks'] / progress_data['total_tasks']) * 100
+
+                students_data.append({
+                    'id': student['id'],
+                    'name': student['name'],
+                    'email': student['email'],
+                    'progress': enrollment['progress_percentage'],
+                    'status': enrollment['status'],
+                    'enrolled_at': enrollment['enrolled_at'],
+                    'detailed_progress': progress_data,
+                    'module_progress': progress_data['module_progress'],
+                    'completion_percentage': round(completion_percentage, 1),
+                    'completed_quizzes': progress_data['quiz_attempts'],
+                    'avg_quiz_score': round(sum(progress_data['quiz_scores']) / len(progress_data['quiz_scores']), 1) if progress_data['quiz_scores'] else 0,
+                    'last_active': 'Recently'  # Placeholder for now
+                })
+        
+        # Calculate overall course statistics
+        total_students = len(students_data)
+        avg_course_progress = round(sum(s['progress'] for s in students_data) / total_students, 1) if students_data else 0
+        completion_rate = len([s for s in students_data if s['progress'] >= 80]) / total_students * 100 if total_students > 0 else 0
+        
+        # Get module completion statistics
+        module_stats = []
+        for module in modules:
+            completed_count = sum(1 for s in students_data 
+                               if module['id'] in s['module_progress'] and 
+                               s['module_progress'][module['id']]['progress'] >= 80)
+            
+            # Calculate average quiz score for this module
+            # Simplified for now - will be enhanced later
+            avg_score = 0
+            
+            module_stats.append({
+                'id': module['id'],
+                'title': module['title'],
+                'completion_rate': round((completed_count / total_students) * 100, 1) if total_students > 0 else 0,
+                'completed': completed_count,
+                'avg_score': avg_score,
+                'order_index': module['order_index']
+            })
+        
+        # Sort modules by order_index
+        module_stats.sort(key=lambda x: x['order_index'])
+        
+        # Prepare data for charts
+        progress_distribution = {}
+        for student in students_data:
+            progress_band = (student['progress'] // 10) * 10
+            progress_distribution[progress_band] = progress_distribution.get(progress_band, 0) + 1
+        
+        # Get all submissions for students in this course
+        all_submissions = []
+        for student in students_data:
+            student_submissions = student['detailed_progress']['assessments']
+            for submission in student_submissions:
+                # Get task and module info for this submission
+                task_result = supabase.table('tasks').select('title, module_id').eq('id', submission['task_id']).execute()
+                if task_result.data:
+                    task = task_result.data[0]
+                    module_result = supabase.table('modules').select('title').eq('id', task['module_id']).execute()
+                    module_title = module_result.data[0]['title'] if module_result.data else 'Unknown Module'
+
+                    all_submissions.append({
+                        'id': submission['id'],
+                        'student_id': student['id'],
+                        'student_name': student['name'],
+                        'student_email': student['email'],
+                        'task_title': task['title'],
+                        'module_title': module_title,
+                        'submitted_at': submission['submitted_at'],
+                        'file_name': submission.get('file_name', ''),
+                        'file_url': submission.get('file_url', ''),
+                        'grade': submission.get('grade'),
+                        'feedback': submission.get('feedback', ''),
+                        'status': submission.get('status', 'submitted')
+                    })
+
+        return render_template('course_analytics.html',
+                             course=course,
+                             modules=modules,
+                             students=students_data,
+                             submissions=all_submissions,
+                             module_stats=module_stats,
+                             total_students=total_students,
+                             avg_course_progress=avg_course_progress,
+                             completion_rate=round(completion_rate, 1),
+                             progress_distribution=progress_distribution,
+                             username=session.get('username'))
+    
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        import traceback
+        traceback.print_exc()
+        return redirect(url_for('admin_progress'))
+        return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/grade-submission/<submission_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_grade_submission(submission_id):
+    try:
+        # Get submission details
+        submission_result = supabase.table('submissions').select('*').eq('id', submission_id).execute()
+        if not submission_result.data:
+            flash('Submission not found', 'error')
+            return redirect(url_for('admin_progress'))
+
+        submission = submission_result.data[0]
+
+        # Get student details
+        student_result = supabase.table('profiles').select('id, name, email').eq('id', submission['student_id']).execute()
+        student = student_result.data[0] if student_result.data else {'name': 'Unknown', 'email': 'unknown'}
+
+        # Get task details
+        task_result = supabase.table('tasks').select('id, title, module_id').eq('id', submission['task_id']).execute()
+        task = task_result.data[0] if task_result.data else {'title': 'Unknown Task'}
+
+        # Get module and course details
+        if task.get('module_id'):
+            module_result = supabase.table('modules').select('id, title, course_id').eq('id', task['module_id']).execute()
+            module = module_result.data[0] if module_result.data else {'title': 'Unknown Module'}
+
+            course_result = supabase.table('courses').select('id, title').eq('id', module.get('course_id')).execute()
+            course = course_result.data[0] if course_result.data else {'title': 'Unknown Course'}
+        else:
+            module = {'title': 'Unknown Module'}
+            course = {'title': 'Unknown Course'}
+
+        if request.method == 'POST':
+            grade = request.form.get('grade')
+            feedback = request.form.get('feedback')
+
+            if not grade:
+                flash('Grade is required', 'error')
+                return render_template('admin_grade_submission.html',
+                                     submission=submission,
+                                     student=student,
+                                     task=task,
+                                     module=module,
+                                     course=course)
+
+            try:
+                grade_float = float(grade)
+                if grade_float < 0 or grade_float > 100:
+                    flash('Grade must be between 0 and 100', 'error')
+                    return render_template('admin_grade_submission.html',
+                                         submission=submission,
+                                         student=student,
+                                         task=task,
+                                         module=module,
+                                         course=course)
+            except ValueError:
+                flash('Invalid grade format', 'error')
+                return render_template('admin_grade_submission.html',
+                                     submission=submission,
+                                     student=student,
+                                     task=task,
+                                     module=module,
+                                     course=course)
+
+            # Update submission with grade and feedback
+            update_data = {
+                'grade': grade_float,
+                'feedback': feedback,
+                'status': 'graded'
+            }
+
+            supabase.table('submissions').update(update_data).eq('id', submission_id).execute()
+
+            flash(f'Assignment graded successfully! Grade: {grade_float}%', 'success')
+            return redirect(url_for('course_analytics', course_id=course.get('id', '')))
+
+        return render_template('admin_grade_submission.html',
+                             submission=submission,
+                             student=student,
+                             task=task,
+                             module=module,
+                             course=course,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        import traceback
+        traceback.print_exc()
+        return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/student/grades')
+@login_required
+def student_grades():
+    try:
+        user_id = session.get('user_id')
+
+        # Get all submissions for this student
+        submissions_result = supabase.table('submissions').select('*').eq('student_id', user_id).execute()
+        submissions = submissions_result.data if submissions_result.data else []
+
+        # Get additional info for each submission
+        submissions_with_details = []
+        for submission in submissions:
+            # Get task details
+            task_result = supabase.table('tasks').select('title, module_id').eq('id', submission['task_id']).execute()
+            task = task_result.data[0] if task_result.data else {'title': 'Unknown Task'}
+
+            # Get module details
+            if task.get('module_id'):
+                module_result = supabase.table('modules').select('title, course_id').eq('id', task['module_id']).execute()
+                module = module_result.data[0] if module_result.data else {'title': 'Unknown Module'}
+
+                # Get course details
+                if module.get('course_id'):
+                    course_result = supabase.table('courses').select('title').eq('id', module['course_id']).execute()
+                    course = course_result.data[0] if course_result.data else {'title': 'Unknown Course'}
+                else:
+                    course = {'title': 'Unknown Course'}
+            else:
+                module = {'title': 'Unknown Module'}
+                course = {'title': 'Unknown Course'}
+
+            submissions_with_details.append({
+                'id': submission['id'],
+                'task_title': task['title'],
+                'module_title': module['title'],
+                'course_title': course['title'],
+                'submitted_at': submission['submitted_at'],
+                'grade': submission.get('grade'),
+                'feedback': submission.get('feedback', ''),
+                'status': submission.get('status', 'submitted'),
+                'file_name': submission.get('file_name', ''),
+                'file_url': submission.get('file_url', '')
+            })
+
+        # Calculate overall statistics
+        total_submissions = len(submissions_with_details)
+        graded_submissions = len([s for s in submissions_with_details if s['grade'] is not None])
+        avg_grade = 0
+        if graded_submissions > 0:
+            grades = [s['grade'] for s in submissions_with_details if s['grade'] is not None]
+            avg_grade = round(sum(grades) / len(grades), 1)
+
+        return render_template('student_grades.html',
+                             submissions=submissions_with_details,
+                             total_submissions=total_submissions,
+                             graded_submissions=graded_submissions,
+                             avg_grade=avg_grade,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        import traceback
+        traceback.print_exc()
+        return redirect(url_for('dashboard'))
+
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)

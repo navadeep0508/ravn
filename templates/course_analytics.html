@@ -1,0 +1,446 @@
+{% extends "admin_base.html" %}
+
+{% block page_title %}{{ course.title }} - Analytics{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Course Header with Gradient Design -->
+    <div class="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-xl shadow-2xl p-8 mb-8 text-white relative overflow-hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-10"></div>
+        <div class="relative z-10">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                        <i class="fas fa-chart-pie text-2xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-bold mb-2">{{ course.title }} - Analytics</h1>
+                        <p class="text-indigo-100 text-lg">Comprehensive student progress and performance tracking</p>
+                    </div>
+                </div>
+                <div class="hidden md:block">
+                    <div class="text-right">
+                        <div class="text-4xl font-bold mb-1">{{ total_students }}</div>
+                        <div class="text-indigo-200">Enrolled Students</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Decorative elements -->
+        <div class="absolute -top-4 -right-4 w-24 h-24 bg-white bg-opacity-10 rounded-full"></div>
+        <div class="absolute -bottom-6 -left-6 w-32 h-32 bg-white bg-opacity-5 rounded-full"></div>
+    </div>
+
+    <!-- Statistics Cards with Enhanced Design -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-blue-500">
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-blue-100 text-blue-600 mr-4">
+                            <i class="fas fa-users text-2xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Total Students</p>
+                            <p class="text-3xl font-bold text-gray-900">{{ total_students }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-green-500">
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-green-100 text-green-600 mr-4">
+                            <i class="fas fa-chart-line text-2xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Avg. Progress</p>
+                            <p class="text-3xl font-bold text-gray-900">{{ avg_course_progress }}%</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-purple-500">
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-purple-100 text-purple-600 mr-4">
+                            <i class="fas fa-trophy text-2xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Completion Rate</p>
+                            <p class="text-3xl font-bold text-gray-900">{{ completion_rate }}%</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-orange-500">
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-orange-100 text-orange-600 mr-4">
+                            <i class="fas fa-graduation-cap text-2xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Active Students</p>
+                            <p class="text-3xl font-bold text-gray-900">{{ students|selectattr('status', 'equalto', 'active')|list|length }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Distribution Chart -->
+    <div class="bg-white rounded-xl shadow-lg overflow-hidden mb-8">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+            <h3 class="text-xl font-semibold text-gray-800 flex items-center">
+                <i class="fas fa-chart-bar text-indigo-600 mr-3"></i>
+                Progress Distribution
+            </h3>
+        </div>
+        <div class="p-6">
+            <div class="chart-container" style="position: relative; height:300px;">
+                <canvas id="progressChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Module Completion Table -->
+    <div class="bg-white rounded-xl shadow-lg overflow-hidden mb-8">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+            <div class="flex items-center justify-between">
+                <h3 class="text-xl font-semibold text-gray-800 flex items-center">
+                    <i class="fas fa-list text-purple-600 mr-3"></i>
+                    Module Completion
+                </h3>
+                <div class="flex space-x-2">
+                    <button class="px-3 py-1 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 transition-colors">
+                        <i class="fas fa-download mr-1"></i>Export
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Module</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion Rate</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Students Completed</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg. Score</th>
+                        <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for module in module_stats %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">{{ module.title }}</div>
+                            <div class="text-sm text-gray-500">{{ module.completed }}/{{ total_students }} students</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <div class="flex-grow mr-3">
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-{{ 'green' if module.completion_rate >= 80 else 'yellow' if module.completion_rate >= 60 else 'red' }}-500 h-2 rounded-full" style="width: {{ module.completion_rate }}%"></div>
+                                    </div>
+                                </div>
+                                <span class="text-sm font-medium text-gray-900">{{ module.completion_rate }}%</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ module.completed }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-{{ 'green' if module.avg_score >= 70 else 'yellow' }}-100 text-{{ 'green' if module.avg_score >= 70 else 'yellow' }}-800">
+                                {{ module.avg_score }}%
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <a href="#" class="text-indigo-600 hover:text-indigo-900">View Details</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Student Performance Table -->
+    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+            <div class="flex items-center justify-between">
+                <h3 class="text-xl font-semibold text-gray-800 flex items-center">
+                    <i class="fas fa-user-graduate text-blue-600 mr-3"></i>
+                    Student Performance
+                </h3>
+                <div class="flex space-x-2">
+                    <input type="text" placeholder="Search students..." class="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                    <button class="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
+                        <i class="fas fa-filter"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quizzes</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg. Score</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for student in students %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0 h-10 w-10">
+                                    <div class="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                                        <span class="text-indigo-600 font-medium text-sm">{{ student.name[0]|upper }}</span>
+                                    </div>
+                                </div>
+                                <div class="ml-4">
+                                    <div class="text-sm font-medium text-gray-900">{{ student.name }}</div>
+                                    <div class="text-sm text-gray-500">{{ student.email }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <div class="flex-grow mr-3">
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-{{ 'green' if student.progress and student.progress >= 80 else 'yellow' if student.progress and student.progress >= 60 else 'red' }}-500 h-2 rounded-full" style="width: {{ student.progress or 0 }}%"></div>
+                                    </div>
+                                </div>
+                                <span class="text-sm font-medium text-gray-900">{{ student.progress|round(1) if student.progress else 0 }}%</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ student.completed_quizzes }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-{{ 'green' if student.avg_quiz_score and student.avg_quiz_score >= 70 else 'yellow' }}-100 text-{{ 'green' if student.avg_quiz_score and student.avg_quiz_score >= 70 else 'yellow' }}-800">
+                                {{ student.avg_quiz_score|default(0) }}%
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-{{ 'green' if student.status == 'active' else 'gray' }}-100 text-{{ 'green' if student.status == 'active' else 'gray' }}-800">
+                                {{ student.status|title }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button onclick="viewStudentProgress('{{ student.id }}', '{{ student.name }}')" class="text-indigo-600 hover:text-indigo-900 mr-3">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Submitted Assessments Section -->
+    {% if submissions %}
+    <div class="bg-white rounded-xl shadow-lg overflow-hidden mt-8">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+            <div class="flex items-center justify-between">
+                <h3 class="text-xl font-semibold text-gray-800 flex items-center">
+                    <i class="fas fa-file-alt text-green-600 mr-3"></i>
+                    Submitted Assessments
+                </h3>
+                <div class="flex space-x-2">
+                    <span class="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">
+                        {{ submissions|length }} submissions
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assignment</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Module</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for submission in submissions %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">{{ submission.student_name }}</div>
+                            <div class="text-sm text-gray-500">{{ submission.student_email }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">{{ submission.task_title }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ submission.module_title }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ submission.submitted_at|strftime('%b %d, %Y %I:%M %p') }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if submission.grade is defined and submission.grade is not none %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-{{ 'green' if submission.grade >= 80 else 'yellow' if submission.grade >= 60 else 'red' }}-100 text-{{ 'green' if submission.grade >= 80 else 'yellow' if submission.grade >= 60 else 'red' }}-800">
+                                    {{ submission.grade }}%
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                    Not Graded
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-{{ 'green' if submission.status == 'graded' else 'yellow' }}-100 text-{{ 'green' if submission.status == 'graded' else 'yellow' }}-800">
+                                {{ submission.status|title }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            {% if submission.file_url %}
+                                <a href="{{ submission.file_url }}" target="_blank" class="text-indigo-600 hover:text-indigo-900 mr-3">
+                                    <i class="fas fa-download"></i> Download
+                                </a>
+                            {% endif %}
+                            {% if submission.status == 'submitted' %}
+                                <a href="{{ url_for('admin_grade_submission', submission_id=submission.id) }}" class="text-green-600 hover:text-green-900">
+                                    <i class="fas fa-edit"></i> Grade
+                                </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Student Progress Modal -->
+<div class="modal fade" id="studentProgressModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="studentModalLabel">Student Progress</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="studentProgressContent">
+                <!-- Content will be loaded dynamically -->
+                <div class="text-center my-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary">Send Report</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+// Initialize progress chart
+document.addEventListener('DOMContentLoaded', function() {
+    const progressCtx = document.getElementById('progressChart');
+    if (progressCtx) {
+        const progressData = {{ progress_distribution|tojson|safe }};
+
+        // Convert progress distribution to array format
+        const labels = [];
+        const data = [];
+        for (let i = 0; i <= 100; i += 10) {
+            labels.push(`${i}-${i+10}%`);
+            data.push(progressData[i] || 0);
+        }
+
+        new Chart(progressCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Number of Students',
+                    data: data,
+                    backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                    borderColor: 'rgba(99, 102, 241, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+    }
+});
+
+// View student progress
+function viewStudentProgress(studentId, studentName) {
+    const modal = new bootstrap.Modal(document.getElementById('studentProgressModal'));
+    const modalTitle = document.getElementById('studentModalLabel');
+    const modalContent = document.getElementById('studentProgressContent');
+
+    modalTitle.textContent = `${studentName}'s Progress`;
+
+    // Show basic student progress info
+    modalContent.innerHTML = `
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <h6>Student Information</h6>
+                    <p><strong>Name:</strong> ${studentName}</p>
+                    <p><strong>ID:</strong> ${studentId}</p>
+                    <p><strong>Status:</strong> Active</p>
+                    <p><strong>Enrolled:</strong> Recently</p>
+                </div>
+
+                <div class="alert alert-warning">
+                    <p><i class="fas fa-info-circle me-2"></i>Detailed progress tracking will be available in the next update.</p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    modal.show();
+}
+</script>
+{% endblock %}

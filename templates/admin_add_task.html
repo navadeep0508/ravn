@@ -1,0 +1,664 @@
+{% extends "admin_base.html" %}
+
+{% block page_title %}Add Task - {{ module.title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-3xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800">Add Task</h1>
+            <p class="text-gray-600">Create a new task for "{{ module.title }}"</p>
+        </div>
+        <a href="{{ url_for('admin_module_tasks', module_id=module.id) }}"
+           class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+            <i class="fas fa-arrow-left mr-2"></i>Back to Tasks
+        </a>
+    </div>
+
+    <!-- Module Info -->
+    <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+        <div class="flex items-center">
+            <div class="w-16 h-16 bg-gradient-to-br from-purple-400 to-purple-600 rounded-lg flex items-center justify-center mr-4">
+                <i class="fas fa-tasks text-white text-xl"></i>
+            </div>
+            <div>
+                <h3 class="font-semibold text-gray-800">{{ module.title }}</h3>
+                <p class="text-sm text-gray-600">{{ course.title }} • Module {{ module.order_index }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Task Form -->
+    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-800">Task Information</h3>
+        </div>
+
+        <form method="POST" action="{{ url_for('admin_add_task', module_id=module.id) }}" class="p-6 space-y-6">
+            <!-- Task Type -->
+            <div>
+                <label for="type" class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-tag mr-2"></i>Task Type
+                </label>
+                <select
+                    id="type"
+                    name="type"
+                    required
+                    onchange="showTaskTypeFields()"
+                    class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all bg-white"
+                >
+                    <option value="">Select task type</option>
+                    <option value="video">🎥 Video</option>
+                    <option value="reading">📖 Reading</option>
+                    <option value="quiz">❓ Quiz</option>
+                    <option value="assignment">📝 Assignment</option>
+                    <option value="discussion">💬 Discussion</option>
+                </select>
+            </div>
+
+            <!-- Task Title -->
+            <div>
+                <label for="title" class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-heading mr-2"></i>Task Title
+                </label>
+                <input
+                    type="text"
+                    id="title"
+                    name="title"
+                    required
+                    class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
+                    placeholder="e.g., Watch Introduction Video"
+                >
+            </div>
+
+            <!-- Task Description -->
+            <div>
+                <label for="description" class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-align-left mr-2"></i>Description
+                </label>
+                <textarea
+                    id="description"
+                    name="description"
+                    required
+                    rows="3"
+                    class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
+                    placeholder="Describe what students need to do for this task..."
+                ></textarea>
+            </div>
+
+            <!-- Order and Time -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="order_index" class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-sort-numeric-down mr-2"></i>Order
+                    </label>
+                    <input
+                        type="number"
+                        id="order_index"
+                        name="order_index"
+                        min="1"
+                        value="{{ (tasks | max(attribute='order_index') | default(0)) + 1 }}"
+                        class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
+                    >
+                    <p class="text-xs text-gray-500 mt-1">Task position in module sequence</p>
+                </div>
+
+                <div>
+                    <label for="estimated_time" class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-clock mr-2"></i>Estimated Time
+                    </label>
+                    <input
+                        type="text"
+                        id="estimated_time"
+                        name="estimated_time"
+                        value="30 minutes"
+                        class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
+                        placeholder="e.g., 30 minutes, 1 hour"
+                    >
+                </div>
+            </div>
+
+            <!-- Dynamic Task Type Fields -->
+            <div id="task-type-fields">
+                <!-- Fields will be shown based on selected task type -->
+            </div>
+
+            <!-- Mandatory Toggle -->
+            <div class="flex items-center">
+                <input
+                    type="checkbox"
+                    id="is_mandatory"
+                    name="is_mandatory"
+                    checked
+                    class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                >
+                <label for="is_mandatory" class="ml-2 block text-sm text-gray-900">
+                    This task is mandatory (required for module completion)
+                </label>
+            </div>
+
+            <!-- Task Preview -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h4 class="text-sm font-medium text-gray-700 mb-3">Task Preview</h4>
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center mb-2">
+                        <span class="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full mr-2">
+                            Video
+                        </span>
+                        <h5 class="font-medium text-gray-800">New Task Title</h5>
+                        <span class="ml-auto px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+                            Required
+                        </span>
+                    </div>
+                    <p class="text-sm text-gray-600">Task description will appear here...</p>
+                    <div class="flex items-center text-xs text-gray-500 mt-2">
+                        <i class="fas fa-clock mr-1"></i>
+                        <span>30 minutes</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit Buttons -->
+            <div class="flex flex-col sm:flex-row gap-3 pt-4">
+                <button
+                    type="submit"
+                    class="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-green-500 to-blue-600 text-white font-semibold rounded-lg shadow-lg hover:opacity-90 transition-opacity"
+                >
+                    <i class="fas fa-plus mr-2"></i>Create Task
+                </button>
+                <a href="{{ url_for('admin_module_tasks', module_id=module.id) }}"
+                   class="flex-1 sm:flex-none px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors text-center">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Task Type Guide -->
+<div class="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+    <h3 class="text-lg font-semibold text-blue-800 mb-4">
+        <i class="fas fa-info-circle mr-2"></i>Task Creation Guide
+    </h3>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+            <h4 class="font-medium text-gray-800 mb-2">🎥 Video Tasks</h4>
+            <ul class="text-sm text-gray-600 space-y-1">
+                <li>• Perfect for video lectures and tutorials</li>
+                <li>• Supports YouTube URLs (auto-embeds)</li>
+                <li>• Students can watch and mark as complete</li>
+            </ul>
+        </div>
+
+        <div>
+            <h4 class="font-medium text-gray-800 mb-2">📖 Reading Tasks</h4>
+            <ul class="text-sm text-gray-600 space-y-1">
+                <li>• Ideal for articles, documents, and texts</li>
+                <li>• Can link to PDFs, web articles, or notes</li>
+                <li>• Students read and mark as complete</li>
+            </ul>
+        </div>
+
+        <div>
+            <h4 class="font-medium text-gray-800 mb-2">❓ Quiz Tasks</h4>
+            <ul class="text-sm text-gray-600 space-y-1">
+                <li>• Interactive assessments and knowledge checks</li>
+                <li>• Multiple choice, true/false questions</li>
+                <li>• Auto-grading and immediate feedback</li>
+            </ul>
+        </div>
+
+        <div>
+            <h4 class="font-medium text-gray-800 mb-2">📝 Assignment Tasks</h4>
+            <ul class="text-sm text-gray-600 space-y-1">
+                <li>• Hands-on projects and homework</li>
+                <li>• File uploads and submission deadlines</li>
+                <li>• Manual grading by instructors</li>
+            </ul>
+        </div>
+
+        <div class="md:col-span-2">
+            <h4 class="font-medium text-gray-800 mb-2">💬 Discussion Tasks</h4>
+            <ul class="text-sm text-gray-600 space-y-1">
+                <li>• Community interaction and peer learning</li>
+                <li>• Forum-style discussions and Q&A</li>
+                <li>• Encourage collaboration and engagement</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="mt-4 pt-4 border-t border-blue-200">
+        <p class="text-sm text-blue-700">
+            <strong>Pro Tips:</strong> Start with video and reading tasks for foundational content, then use quizzes for assessment and discussions for engagement.
+        </p>
+    </div>
+</div>
+
+<script>
+function showTaskTypeFields() {
+    const taskType = document.getElementById('type').value;
+    const fieldsContainer = document.getElementById('task-type-fields');
+
+    // Clear existing fields
+    fieldsContainer.innerHTML = '';
+
+    if (taskType === 'video') {
+        fieldsContainer.innerHTML = `
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 class="text-sm font-medium text-blue-800 mb-3">🎥 Video Task Settings</h4>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Video URL (Required)</label>
+                        <input type="url" name="resource_link" placeholder="https://youtu.be/VIDEO_ID or https://youtube.com/watch?v=VIDEO_ID"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-gray-500 mt-1">YouTube URLs will be automatically embedded as playable videos</p>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="auto_play" class="h-4 w-4 text-blue-600 rounded">
+                        <label for="auto_play" class="ml-2 text-sm text-gray-700">Auto-play video when page loads</label>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else if (taskType === 'reading') {
+        fieldsContainer.innerHTML = `
+            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h4 class="text-sm font-medium text-green-800 mb-3">📖 Reading Task Settings</h4>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Reading Material URL</label>
+                        <input type="url" name="resource_link" placeholder="https://example.com/article.pdf or web article URL"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Reading Instructions</label>
+                        <textarea rows="2" placeholder="Specific instructions for reading this material..."
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"></textarea>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else if (taskType === 'quiz') {
+        fieldsContainer.innerHTML = `
+            <div class="bg-purple-50 border border-purple-200 rounded-lg p-6">
+                <h4 class="text-lg font-semibold text-purple-800 mb-4 flex items-center">
+                    <i class="fas fa-clipboard-list mr-2"></i>Quiz Builder
+                </h4>
+
+                <!-- Quiz Questions Builder -->
+                <div class="mb-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <label class="block text-sm font-medium text-gray-700">
+                            <i class="fas fa-question-circle mr-2"></i>Quiz Questions
+                        </label>
+                        <button type="button" id="add-question-btn" class="px-3 py-1 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 transition-colors">
+                            <i class="fas fa-plus mr-1"></i>Add Question
+                        </button>
+                    </div>
+
+                    <div id="questions-container">
+                        <!-- Question 1 (Default) -->
+                        <div class="question-item border border-purple-200 rounded-lg p-4 mb-4 bg-white">
+                            <div class="flex items-center justify-between mb-3">
+                                <h5 class="text-sm font-medium text-purple-800">Question 1</h5>
+                                <button type="button" class="remove-question-btn text-red-500 hover:text-red-700 text-sm">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
+
+                            <div class="space-y-3">
+                                <!-- Question Text -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Question</label>
+                                    <input type="text" name="question_text_1" placeholder="Enter your question here..."
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                                </div>
+
+                                <!-- Answer Options -->
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">Option A</label>
+                                        <input type="text" name="option_a_1" placeholder="First option"
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">Option B</label>
+                                        <input type="text" name="option_b_1" placeholder="Second option"
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">Option C</label>
+                                        <input type="text" name="option_c_1" placeholder="Third option"
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">Option D</label>
+                                        <input type="text" name="option_d_1" placeholder="Fourth option"
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                                    </div>
+                                </div>
+
+                                <!-- Correct Answer -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Correct Answer</label>
+                                    <select name="correct_answer_1" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white">
+                                        <option value="">Select correct answer...</option>
+                                        <option value="A">A</option>
+                                        <option value="B">B</option>
+                                        <option value="C">C</option>
+                                        <option value="D">D</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 p-3 bg-purple-100 rounded-md">
+                        <p class="text-xs text-purple-700">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            <strong>Tip:</strong> Use the "Add Question" button to create multiple questions. Each question needs a question text, 4 options, and a correct answer.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Quiz Settings Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Passing Score -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-percentage mr-2"></i>Passing Score (%)
+                        </label>
+                        <input
+                            type="number"
+                            name="passing_score"
+                            min="0"
+                            max="100"
+                            value="70"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            placeholder="70">
+                        <p class="text-xs text-gray-500 mt-1">Minimum percentage required to pass (0-100)</p>
+                    </div>
+
+                    <!-- Max Attempts -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-redo-alt mr-2"></i>Maximum Attempts
+                        </label>
+                        <input
+                            type="number"
+                            name="max_attempts"
+                            min="1"
+                            max="10"
+                            value="3"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            placeholder="3">
+                        <p class="text-xs text-gray-500 mt-1">Number of attempts allowed per student (1-10)</p>
+                    </div>
+                </div>
+
+                <!-- Additional Quiz Options -->
+                <div class="border-t border-purple-200 pt-4">
+                    <h5 class="text-sm font-medium text-purple-800 mb-3 flex items-center">
+                        <i class="fas fa-cogs mr-2"></i>Advanced Settings
+                    </h5>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Time Limit -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <i class="fas fa-clock mr-2"></i>Time Limit (minutes)
+                            </label>
+                            <input
+                                type="number"
+                                name="time_limit"
+                                min="0"
+                                value="0"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                placeholder="0 (no limit)">
+                            <p class="text-xs text-gray-500 mt-1">0 = no time limit</p>
+                        </div>
+
+                        <!-- Question Order -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <i class="fas fa-random mr-2"></i>Question Order
+                            </label>
+                            <select name="question_order" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white">
+                                <option value="sequential">Sequential (1, 2, 3...)</option>
+                                <option value="random">Random Order</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Quiz Instructions -->
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-info-circle mr-2"></i>Quiz Instructions (Optional)
+                        </label>
+                        <textarea
+                            name="quiz_instructions"
+                            rows="2"
+                            placeholder="Provide any special instructions for students taking this quiz..."
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                            style="resize: vertical;"></textarea>
+                    </div>
+                </div>
+
+                <!-- Quiz Preview -->
+                <div class="mt-6 p-4 bg-white border border-purple-200 rounded-lg">
+                    <h6 class="text-sm font-medium text-purple-800 mb-2 flex items-center">
+                        <i class="fas fa-eye mr-2"></i>Quiz Preview
+                    </h6>
+                    <div id="quiz-preview" class="text-sm text-gray-600">
+                        <div id="preview-questions-count">0 questions added</div>
+                        <p class="mt-2">📝 Quiz will be displayed with professional exam interface</p>
+                        <p>🎯 Single-choice questions with radio button selection</p>
+                        <p>📊 Automatic scoring and detailed feedback</p>
+                        <p>⏱️ Optional time limits and attempt restrictions</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else if (taskType === 'assignment') {
+        fieldsContainer.innerHTML = `
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h4 class="text-sm font-medium text-yellow-800 mb-3">📝 Assignment Task Settings</h4>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Assignment Instructions</label>
+                        <textarea rows="3" placeholder="Detailed instructions for completing this assignment..."
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                            <input type="date"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Max File Size</label>
+                            <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500">
+                                <option value="10">10 MB</option>
+                                <option value="25">25 MB</option>
+                                <option value="50">50 MB</option>
+                                <option value="100">100 MB</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="allow_late" class="h-4 w-4 text-yellow-600 rounded">
+                        <label for="allow_late" class="ml-2 text-sm text-gray-700">Allow late submissions</label>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else if (taskType === 'discussion') {
+        fieldsContainer.innerHTML = `
+            <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                <h4 class="text-sm font-medium text-indigo-800 mb-3">💬 Discussion Task Settings</h4>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Discussion Prompt</label>
+                        <textarea rows="3" placeholder="What question or topic should students discuss?"
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Min Posts Required</label>
+                            <input type="number" min="1" max="10" value="1"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Discussion Duration</label>
+                            <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                <option value="7">7 days</option>
+                                <option value="14">14 days</option>
+                                <option value="30">30 days</option>
+                                <option value="unlimited">Unlimited</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="require_replies" class="h-4 w-4 text-indigo-600 rounded">
+                        <label for="require_replies" class="ml-2 text-sm text-gray-700">Students must reply to others</label>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+// Show fields on page load if task type is pre-selected
+document.addEventListener('DOMContentLoaded', function() {
+    showTaskTypeFields();
+
+    // Add event listeners for quiz question builder
+    document.addEventListener('click', function(e) {
+        if (e.target.id === 'add-question-btn') {
+            addNewQuestion();
+        } else if (e.target.classList.contains('remove-question-btn')) {
+            removeQuestion(e.target);
+        }
+    });
+
+    // Update preview counter when inputs change
+    document.addEventListener('input', function(e) {
+        if (e.target.closest('.question-item')) {
+            updateQuizPreview();
+        }
+    });
+});
+
+let questionCounter = 1;
+
+function addNewQuestion() {
+    questionCounter++;
+    const questionsContainer = document.getElementById('questions-container');
+
+    const questionHTML = `
+        <div class="question-item border border-purple-200 rounded-lg p-4 mb-4 bg-white">
+            <div class="flex items-center justify-between mb-3">
+                <h5 class="text-sm font-medium text-purple-800">Question ${questionCounter}</h5>
+                <button type="button" class="remove-question-btn text-red-500 hover:text-red-700 text-sm">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <!-- Question Text -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Question</label>
+                    <input type="text" name="question_text_${questionCounter}" placeholder="Enter your question here..."
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                </div>
+
+                <!-- Answer Options -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Option A</label>
+                        <input type="text" name="option_a_${questionCounter}" placeholder="First option"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Option B</label>
+                        <input type="text" name="option_b_${questionCounter}" placeholder="Second option"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Option C</label>
+                        <input type="text" name="option_c_${questionCounter}" placeholder="Third option"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Option D</label>
+                        <input type="text" name="option_d_${questionCounter}" placeholder="Fourth option"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                    </div>
+                </div>
+
+                <!-- Correct Answer -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Correct Answer</label>
+                    <select name="correct_answer_${questionCounter}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white">
+                        <option value="">Select correct answer...</option>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    `;
+
+    questionsContainer.insertAdjacentHTML('beforeend', questionHTML);
+    updateQuizPreview();
+}
+
+function removeQuestion(button) {
+    const questionItem = button.closest('.question-item');
+    if (questionItem) {
+        questionItem.remove();
+        updateQuestionNumbers();
+        updateQuizPreview();
+    }
+}
+
+function updateQuestionNumbers() {
+    const questionItems = document.querySelectorAll('.question-item');
+    questionItems.forEach((item, index) => {
+        const questionNumber = index + 1;
+        const header = item.querySelector('h5');
+        if (header) {
+            header.textContent = `Question ${questionNumber}`;
+        }
+
+        // Update all input names for this question
+        const inputs = item.querySelectorAll('input, select');
+        inputs.forEach(input => {
+            const name = input.getAttribute('name');
+            if (name) {
+                const newName = name.replace(/_\d+$/, `_${questionNumber}`);
+                input.setAttribute('name', newName);
+            }
+        });
+    });
+    questionCounter = questionItems.length;
+}
+
+function updateQuizPreview() {
+    const questionItems = document.querySelectorAll('.question-item');
+    const previewElement = document.getElementById('preview-questions-count');
+
+    if (questionItems.length === 0) {
+        previewElement.textContent = '0 questions added';
+    } else if (questionItems.length === 1) {
+        previewElement.textContent = '1 question added';
+    } else {
+        previewElement.textContent = `${questionItems.length} questions added`;
+    }
+}
+</script>
+{% endblock %}

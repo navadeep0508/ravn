@@ -1,0 +1,165 @@
+{% extends "dashboard_base.html" %}
+
+{% block page_title %}My Submissions{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 flex items-center">
+                    <i class="fas fa-file-alt text-indigo-600 mr-3"></i>
+                    My Assignment Submissions
+                </h1>
+                <p class="text-gray-600 mt-2">View and manage all your submitted assignments</p>
+            </div>
+            <div class="flex space-x-3">
+                <a href="{{ url_for('courses') }}" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <i class="fas fa-graduation-cap mr-2"></i>Browse Courses
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {% if submissions %}
+        <!-- Submissions Grid -->
+        <div class="grid gap-6">
+            {% for submission in submissions %}
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300">
+                <div class="p-6">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <!-- Header with Status -->
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-xl font-semibold text-gray-900">{{ submission.task.title }}</h3>
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
+                                    {% if submission.status == 'submitted' %}bg-yellow-100 text-yellow-800
+                                    {% elif submission.status == 'graded' %}bg-green-100 text-green-800
+                                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                    {% if submission.status == 'graded' %}
+                                        <i class="fas fa-check-circle mr-1"></i>
+                                    {% elif submission.status == 'submitted' %}
+                                        <i class="fas fa-clock mr-1"></i>
+                                    {% endif %}
+                                    {{ submission.status | title }}
+                                </span>
+                            </div>
+
+                            <!-- Course and Module Info -->
+                            <div class="flex items-center space-x-4 text-sm text-gray-600 mb-4">
+                                <div class="flex items-center">
+                                    <div class="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center mr-2">
+                                        <i class="fas fa-graduation-cap text-indigo-600 text-sm"></i>
+                                    </div>
+                                    <span class="font-medium">{{ submission.course.title }}</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-2">
+                                        <i class="fas fa-book text-green-600 text-sm"></i>
+                                    </div>
+                                    <span>{{ submission.module.title }}</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center mr-2">
+                                        <i class="fas fa-calendar text-purple-600 text-sm"></i>
+                                    </div>
+                                    <span>Submitted {{ submission.submitted_at|strftime('%b %d, %Y') }}</span>
+                                </div>
+                            </div>
+
+                            <!-- File Info -->
+                            <div class="flex items-center p-4 bg-gray-50 rounded-lg mb-4">
+                                <div class="flex-shrink-0">
+                                    <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <i class="fas fa-file text-blue-600"></i>
+                                    </div>
+                                </div>
+                                <div class="ml-4 flex-1">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <p class="text-sm font-medium text-gray-900">{{ submission.file_name }}</p>
+                                            <p class="text-sm text-gray-500">{{ (submission.file_size / 1024 / 1024) | round(2) }} MB</p>
+                                        </div>
+                                        <a href="{{ submission.file_url }}" target="_blank" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                            <i class="fas fa-download mr-2"></i>Download
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Grade Display -->
+                            {% if submission.grade %}
+                            <div class="flex items-center p-4 bg-green-50 rounded-lg border border-green-200 mb-4">
+                                <div class="flex-shrink-0">
+                                    <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                                        <i class="fas fa-trophy text-green-600"></i>
+                                    </div>
+                                </div>
+                                <div class="ml-4">
+                                    <div class="flex items-center">
+                                        <span class="text-sm font-medium text-green-800 mr-2">Grade:</span>
+                                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                                            {{ submission.grade }}%
+                                        </span>
+                                        <span class="ml-2 text-sm text-green-600">
+                                            {{ 'Excellent' if submission.grade >= 90 else 'Good' if submission.grade >= 80 else 'Satisfactory' if submission.grade >= 70 else 'Needs Improvement' if submission.grade >= 60 else 'Poor' }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            <!-- Feedback Display -->
+                            {% if submission.feedback %}
+                            <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                <div class="flex items-start">
+                                    <div class="flex-shrink-0">
+                                        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mt-1">
+                                            <i class="fas fa-comment text-blue-600"></i>
+                                        </div>
+                                    </div>
+                                    <div class="ml-3">
+                                        <h4 class="text-sm font-medium text-blue-800 mb-2">Teacher Feedback</h4>
+                                        <p class="text-sm text-blue-700">{{ submission.feedback }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex flex-col space-y-3 ml-6">
+                            <a href="{{ url_for('submit_assignment', task_id=submission.task_id) }}"
+                               class="inline-flex items-center justify-center px-4 py-2 border border-indigo-300 rounded-md shadow-sm text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                <i class="fas fa-edit mr-2"></i>
+                                {% if submission.status == 'submitted' %}Update{% else %}Resubmit{% endif %}
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <!-- Empty State -->
+        <div class="text-center py-16">
+            <div class="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-file-alt text-gray-400 text-3xl"></i>
+            </div>
+            <h3 class="text-xl font-medium text-gray-900 mb-2">No submissions yet</h3>
+            <p class="text-gray-500 mb-8 max-w-md mx-auto">You haven't submitted any assignments yet. Start by browsing available courses and completing your first assignment.</p>
+            <div class="flex justify-center space-x-4">
+                <a href="{{ url_for('courses') }}"
+                   class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <i class="fas fa-graduation-cap mr-2"></i>Browse Courses
+                </a>
+                <a href="{{ url_for('dashboard') }}"
+                   class="inline-flex items-center px-6 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+                </a>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

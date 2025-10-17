@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.title }} - Modules{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <nav class="flex" aria-label="Breadcrumb">
+                        <ol class="flex items-center space-x-4">
+                            <li>
+                                <a href="{{ url_for('courses') }}" class="text-gray-500 hover:text-gray-700">
+                                    <i class="fas fa-arrow-left mr-2"></i>Courses
+                                </a>
+                            </li>
+                            <li>
+                                <span class="text-gray-400">/</span>
+                                <a href="{{ url_for('course_detail', course_id=course.id) }}" class="text-gray-500 hover:text-gray-700 ml-4">
+                                    {{ course.title }}
+                                </a>
+                            </li>
+                            <li>
+                                <span class="text-gray-400">/</span>
+                                <span class="text-gray-900 font-medium ml-4">Modules</span>
+                            </li>
+                        </ol>
+                    </nav>
+                    <h1 class="text-3xl font-bold text-gray-900 mt-2">{{ course.title }}</h1>
+                    <p class="text-gray-600 mt-1">{{ course.description }}</p>
+                </div>
+                <div class="text-right">
+                    <div class="text-sm text-gray-500">Overall Progress</div>
+                    <div class="text-2xl font-bold text-green-600">{{ overall_progress }}%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modules List -->
+        <div class="space-y-6">
+            {% for module in modules %}
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <div class="p-6">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <span class="text-blue-600 font-semibold">{{ loop.index }}</span>
+                                    </div>
+                                </div>
+                                <div class="ml-4 flex-1">
+                                    <h3 class="text-lg font-medium text-gray-900">{{ module.title }}</h3>
+                                    <p class="text-gray-600 mt-1">{{ module.description }}</p>
+                                    <div class="flex items-center mt-2 text-sm text-gray-500">
+                                        <i class="fas fa-clock mr-1"></i>
+                                        {{ module.estimated_time }}
+                                        {% if module.is_locked %}
+                                        <i class="fas fa-lock ml-3 mr-1"></i>
+                                        Locked
+                                        {% else %}
+                                        <i class="fas fa-unlock-alt ml-3 mr-1"></i>
+                                        Unlocked
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ml-4 flex-shrink-0">
+                            {% if module.is_locked %}
+                            <button class="bg-gray-100 text-gray-400 px-4 py-2 rounded-md cursor-not-allowed" disabled>
+                                <i class="fas fa-lock mr-2"></i>Locked
+                            </button>
+                            {% else %}
+                            <a href="{{ url_for('course_module_tasks', course_id=course.id, module_id=module.id) }}"
+                               class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
+                                <i class="fas fa-play mr-2"></i>Start Module
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    {% set module_progress = user_progress.get(module.id, {}) %}
+                    {% if module_progress %}
+                    <div class="mt-4">
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-gray-600">Progress</span>
+                            <span class="font-medium">{{ module_progress.get('status', 'not_started').title() }}</span>
+                        </div>
+                        <div class="mt-2 bg-gray-200 rounded-full h-2">
+                            <div class="bg-blue-600 h-2 rounded-full"
+                                 style="width: {{ module_progress.get('completion_percentage', 0) }}%"></div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Empty State -->
+        {% if not modules %}
+        <div class="bg-white rounded-lg shadow-md p-12 text-center">
+            <i class="fas fa-cubes text-6xl text-gray-300 mb-4"></i>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No modules available</h3>
+            <p class="text-gray-500">This course doesn't have any modules yet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
