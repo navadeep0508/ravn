@@ -1218,8 +1218,7 @@ def edit_profile():
             # Update profile
             supabase.table('profiles').update({
                 'name': name,
-                'email': email,
-                'updated_at': datetime.utcnow().isoformat()
+                'email': email
             }).eq('id', user_id).execute()
 
             # Update session
