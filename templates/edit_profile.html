@@ -3,116 +3,87 @@
 {% block page_title %}Edit Profile{% endblock %}
 
 {% block dashboard_content %}
-<div class="max-w-2xl mx-auto">
-    <!-- Edit Profile Header -->
-    <div class="bg-white rounded-lg shadow overflow-hidden mb-6">
-        <div class="h-20 bg-gradient-to-r from-blue-500 to-purple-600"></div>
-        <div class="px-6 pb-6">
-            <div class="flex items-center justify-between -mt-8">
+<div class="max-w-4xl mx-auto">
+    <!-- Edit Profile Form -->
+    <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div class="p-8">
+            <!-- Header -->
+            <div class="flex flex-col sm:flex-row items-center justify-between pb-6 border-b border-gray-200">
                 <div class="flex items-center">
-                    <img src="https://ui-avatars.com/api/?name={{ user.name }}&background=667eea&color=fff&size=64"
+                    <img src="https://ui-avatars.com/api/?name={{ user.name }}&background=818cf8&color=fff&size=64&bold=true"
                          alt="{{ user.name }}"
-                         class="w-16 h-16 rounded-full border-4 border-white shadow-lg">
-                    <div class="ml-4">
-                        <h1 class="text-xl font-bold text-gray-900">Edit Profile</h1>
-                        <p class="text-gray-600">Update your personal information</p>
+                         class="w-16 h-16 rounded-full ring-4 ring-indigo-100">
+                    <div class="ml-5">
+                        <h1 class="text-2xl font-bold text-gray-800">Edit Profile</h1>
+                        <p class="text-gray-500">Manage your account settings and personal details.</p>
                     </div>
                 </div>
-                <a href="{{ url_for('profile') }}" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
-                    <i class="fas fa-arrow-left mr-2"></i>Back to Profile
+                <a href="{{ url_for('profile') }}" class="mt-4 sm:mt-0 inline-flex items-center px-5 py-2.5 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-all duration-200">
+                    <i class="fas fa-arrow-left mr-2"></i>
+                    Back to Profile
                 </a>
             </div>
-        </div>
-    </div>
 
-    <!-- Edit Profile Form -->
-    <div class="bg-white rounded-lg shadow overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200">
-            <h3 class="text-lg font-semibold text-gray-800">Personal Information</h3>
-        </div>
+            <form method="POST" action="{{ url_for('edit_profile') }}" class="mt-8 space-y-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                    <!-- Full Name -->
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                        <div class="relative">
+                            <i class="fas fa-user absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            <input type="text" id="name" name="name" value="{{ user.name }}" required
+                                   class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200"
+                                   placeholder="Enter your full name">
+                        </div>
+                    </div>
 
-        <form method="POST" action="{{ url_for('edit_profile') }}" class="p-6 space-y-6">
-            <!-- Full Name -->
-            <div>
-                <label for="name" class="block text-sm font-medium text-gray-700 mb-2">
-                    <i class="fas fa-user mr-2"></i>Full Name
-                </label>
-                <input
-                    type="text"
-                    id="name"
-                    name="name"
-                    value="{{ user.name }}"
-                    required
-                    class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
-                    placeholder="Enter your full name"
-                >
-            </div>
+                    <!-- Email Address -->
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                        <div class="relative">
+                            <i class="fas fa-envelope absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            <input type="email" id="email" name="email" value="{{ user.email }}" required readonly
+                                   class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                                   placeholder="Enter your email address">
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">Email cannot be changed.</p>
+                    </div>
 
-            <!-- Email Address -->
-            <div>
-                <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
-                    <i class="fas fa-envelope mr-2"></i>Email Address
-                </label>
-                <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    value="{{ user.email }}"
-                    required
-                    readonly
-                    class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 focus:ring-2 focus:ring-purple-500 transition-all"
-                    placeholder="Enter your email address"
-                >
-                <p class="text-xs text-gray-500 mt-1">Email cannot be changed from this page</p>
-            </div>
+                    <!-- Role -->
+                    <div>
+                        <label for="role" class="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                        <div class="relative">
+                            <i class="fas fa-user-shield absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            <input type="text" id="role" value="{{ user.role | title }}" readonly
+                                   class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed">
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">Role is assigned by administrators.</p>
+                    </div>
 
-            <!-- Role (Read-only) -->
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                    <i class="fas fa-graduation-cap mr-2"></i>Role
-                </label>
-                <div class="flex items-center">
-                    <input
-                        type="text"
-                        value="{{ user.role | title }}"
-                        readonly
-                        class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
-                    >
+                    <!-- Account Created -->
+                    <div>
+                        <label for="created_at" class="block text-sm font-medium text-gray-700 mb-2">Account Created</label>
+                        <div class="relative">
+                            <i class="fas fa-calendar-alt absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            <input type="text" id="created_at" value="{{ user.created_at[:19].replace('T', ' at ') }}" readonly
+                                   class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed">
+                        </div>
+                    </div>
                 </div>
-                <p class="text-xs text-gray-500 mt-1">Role cannot be changed from this page</p>
-            </div>
 
-            <!-- Account Created (Read-only) -->
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                    <i class="fas fa-calendar-plus mr-2"></i>Account Created
-                </label>
-                <div class="flex items-center">
-                    <input
-                        type="text"
-                        value="{{ user.created_at[:19].replace('T', ' at ') }}"
-                        readonly
-                        class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
-                    >
+                <!-- Buttons -->
+                <div class="flex items-center justify-end pt-6 border-t border-gray-200 space-x-4">
+                    <a href="{{ url_for('profile') }}" class="px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-all duration-200">
+                        Cancel
+                    </a>
+                    <button type="submit"
+                            class="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold rounded-lg shadow-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105">
+                        <i class="fas fa-save mr-2"></i>
+                        Save Changes
+                    </button>
                 </div>
-            </div>
-
-            <!-- Submit Buttons -->
-            <div class="flex flex-col sm:flex-row gap-3 pt-4">
-                <button
-                    type="submit"
-                    class="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg shadow-lg hover:opacity-90 transition-opacity"
-                >
-                    <i class="fas fa-save mr-2"></i>Save Changes
-                </button>
-                <a
-                    href="{{ url_for('profile') }}"
-                    class="flex-1 sm:flex-none px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors text-center"
-                >
-                    <i class="fas fa-times mr-2"></i>Cancel
-                </a>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
 </div>
 
