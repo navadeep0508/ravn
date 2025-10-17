@@ -433,7 +433,7 @@ def login():
                     
                     # Check if user exists in users table, if not create
                     try:
-                        user_check = supabase.table('users').select('id').filter('id', user_id).execute()
+                        user_check = supabase.table('users').select('id').eq('id', user_id).execute()
                         if not user_check.data:
                             # Create user in users table
                             user_data = {
@@ -446,6 +446,8 @@ def login():
                             supabase.table('users').insert(user_data).execute()
                     except Exception as e:
                         print(f"Error syncing user to users table: {str(e)}")
+                        import traceback
+                        print(traceback.format_exc())
                     
                     # Set session variables
                     session['user_id'] = user_id
@@ -1243,7 +1245,7 @@ def profile():
     try:
         # Fetch user data from Supabase
         user_id = session.get('user_id')
-        result = supabase.table('profiles').select('*').filter('id', user_id).execute()
+        result = supabase.table('profiles').select('*').eq('id', user_id).execute()
 
         if result.data and len(result.data) > 0:
             user_data = result.data[0]
@@ -1251,11 +1253,12 @@ def profile():
                                  user=user_data,
                                  username=session.get('username'))
         else:
-            flash('User data not found.', 'error')
+            flash('User profile not found.', 'error')
             return redirect(url_for('dashboard'))
-
     except Exception as e:
-        flash(f'An error occurred: {str(e)}', 'error')
+        flash(f'Error fetching profile: {str(e)}', 'error')
+        import traceback
+        print(traceback.format_exc())
         return redirect(url_for('dashboard'))
 
 
@@ -1265,52 +1268,62 @@ def edit_profile():
     try:
         # Fetch current user data
         user_id = session.get('user_id')
-        result = supabase.table('profiles').select('*').filter('id', user_id).execute()
-
-        if not result.data or len(result.data) == 0:
-            flash('User data not found.', 'error')
-            return redirect(url_for('profile'))
-
-        user_data = result.data[0]
+        result = supabase.table('profiles').select('*').eq('id', user_id).execute()
 
         if request.method == 'POST':
             name = request.form.get('name')
             email = request.form.get('email')
+            current_password = request.form.get('current_password')
+            new_password = request.form.get('new_password')
+            confirm_password = request.form.get('confirm_password')
 
-            # Validate required fields
-            if not name or not email:
-                flash('Name and email are required.', 'error')
-                return render_template('edit_profile.html',
-                                     user=user_data,
-                                     username=session.get('username'))
+            # Verify current password if changing password
+            if current_password or new_password or confirm_password:
+                if not all([current_password, new_password, confirm_password]):
+                    flash('All password fields are required for password change.', 'error')
+                    return redirect(url_for('edit_profile'))
+                
+                if new_password != confirm_password:
+                    flash('New passwords do not match.', 'error')
+                    return redirect(url_for('edit_profile'))
+                
+                if not check_password_hash(result.data[0]['password_hash'], current_password):
+                    flash('Current password is incorrect.', 'error')
+                    return redirect(url_for('edit_profile'))
+                
+                # Update password
+                password_hash = generate_password_hash(new_password)
+                supabase.table('profiles').update({'password_hash': password_hash}).eq('id', user_id).execute()
+                flash('Password updated successfully!', 'success')
 
-            # Check if email is already taken by another user
-            existing_user = supabase.table('profiles').select('id').filter('email', 'eq', email).neq('id', user_id).execute()
-            if existing_user.data:
-                flash('Email is already registered to another account.', 'error')
-                return render_template('edit_profile.html',
-                                     user=user_data,
-                                     username=session.get('username'))
-
-            # Update user data
+            # Update profile
             supabase.table('profiles').update({
                 'name': name,
-                'email': email
-            }).filter('id', 'eq', user_id).execute()
+                'email': email,
+                'updated_at': datetime.utcnow().isoformat()
+            }).eq('id', user_id).execute()
 
-            # Update session data
+            # Update session
             session['username'] = name
-            session['email'] = email
-
+            session['user_email'] = email
+            
             flash('Profile updated successfully!', 'success')
             return redirect(url_for('profile'))
 
-        return render_template('edit_profile.html',
-                             user=user_data,
-                             username=session.get('username'))
+        # For GET request, show the form with current data
+        if result.data and len(result.data) > 0:
+            user_data = result.data[0]
+            return render_template('edit_profile.html',
+                                 user=user_data,
+                                 username=session.get('username'))
+        else:
+            flash('User profile not found.', 'error')
+            return redirect(url_for('dashboard'))
 
     except Exception as e:
-        flash(f'An error occurred: {str(e)}', 'error')
+        flash(f'Error updating profile: {str(e)}', 'error')
+        import traceback
+        print(traceback.format_exc())
         return redirect(url_for('profile'))
 
 
