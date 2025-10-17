@@ -43,90 +43,7 @@ def youtube_id_filter(url):
         if match:
             return match.group(1)
 
-def parse_quiz_questions(quiz_text):
-    """Parse quiz questions from the formatted text"""
-    if not quiz_text or not isinstance(quiz_text, str):
-        return []
 
-    questions = []
-    lines = [line.strip() for line in quiz_text.strip().split('\n') if line.strip()]
-    
-    current_question = None
-    current_options = []
-    current_answer = None
-    
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
-        
-        # Look for a question (any line that's not an option or answer)
-        if not line.startswith(('A)', 'B)', 'C)', 'D)', 'Answer:')):
-            # If we have a complete question, save it
-            if current_question and current_options and current_answer:
-                questions.append({
-                    'question': current_question,
-                    'options': current_options.copy(),
-                    'correct_answer': current_answer
-                })
-                current_options = []
-                current_answer = None
-            
-            current_question = line
-            
-            # Look ahead for options and answer
-            i += 1
-            while i < len(lines) and lines[i].startswith(('A)', 'B)', 'C)', 'D)', 'Answer:')):
-                line = lines[i].strip()
-                
-                # Handle options
-                if line.startswith(('A)', 'B)', 'C)', 'D)')):
-                    current_options.append(line)
-                # Handle answer
-                elif line.startswith('Answer:'):
-                    answer_part = line.split(':', 1)[1].strip().upper()
-                    if answer_part in ['A', 'B', 'C', 'D']:
-                        current_answer = answer_part
-                
-                i += 1
-            
-            # If we found a complete question, add it
-            if current_question and current_options and current_answer:
-                questions.append({
-                    'question': current_question,
-                    'options': current_options.copy(),
-                    'correct_answer': current_answer
-                })
-                current_question = None
-                current_options = []
-                current_answer = None
-        else:
-            i += 1
-    
-    # Handle the last question if it wasn't added
-    if current_question and current_options and current_answer:
-        questions.append({
-            'question': current_question,
-            'options': current_options.copy(),
-            'correct_answer': current_answer
-        })
-    
-    return questions
-
-def format_quiz_questions(questions):
-    """Format quiz questions back to text format"""
-    if not questions:
-        return ""
-
-    formatted_lines = []
-    for i, q in enumerate(questions, 1):
-        formatted_lines.append(f"{i}. {q['question']}")
-        for option in q['options']:
-            formatted_lines.append(f"   {option}")
-        formatted_lines.append(f"   Correct Answer: {q['correct_answer']}")
-        if i < len(questions):
-            formatted_lines.append("")  # Empty line between questions
-
-    return '\n'.join(formatted_lines)
 
 def convert_to_youtube_embed(url):
     """Convert various YouTube URL formats to embed format"""
@@ -162,7 +79,7 @@ app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())
 
 # Register the custom filters
 app.jinja_env.filters['youtube_id'] = youtube_id_filter
-app.jinja_env.filters['parse_quiz_questions'] = parse_quiz_questions
+
 app.jinja_env.filters['strftime'] = format_datetime
 app.jinja_env.filters['format_datetime'] = format_datetime  # Add an alias for more explicit usage
 app.jinja_env.filters['datetimeformat'] = format_datetime  # Add datetimeformat alias for compatibility
@@ -1019,114 +936,7 @@ def course_task(course_id, module_id, task_id):
         return redirect(url_for('course_module_tasks', course_id=course_id, module_id=module_id))
 
 
-@app.route('/course/<course_id>/module/<module_id>/task/<task_id>/submit_quiz', methods=['POST'])
-@login_required
-def submit_quiz(course_id, module_id, task_id):
-    """New and improved quiz submission handler"""
-    try:
-        user_id = session.get('user_id')
-        user_email = session.get('user_email')
 
-        if not user_id or not user_email:
-            return jsonify({'success': False, 'error': 'User not authenticated'}), 401
-
-        # Get quiz data from database
-        quiz_result = supabase.table('tasks').select('*').filter('id', 'eq', task_id).execute()
-
-        if not quiz_result.data:
-            return jsonify({'success': False, 'error': 'Quiz not found'}), 404
-
-        task = dict(quiz_result.data[0]) # Ensure task is a standard dictionary
-        quiz_content = task.get('quiz_data')
-
-        if not quiz_content:
-            return jsonify({'success': False, 'error': 'No quiz content found'}), 400
-
-        # Parse quiz questions
-        questions = parse_quiz_questions(quiz_content)
-        if not questions:
-            return jsonify({'success': False, 'error': 'Invalid quiz format'}), 400
-
-        # Process user answers
-        user_answers = {}
-        score = 0
-        total_questions = len(questions)
-        detailed_results = []
-
-        for i, question in enumerate(questions, 1):
-            field_name = f'question_{i}'
-            user_answer = request.form.get(field_name, '').strip()
-            correct_answer = question.get('correct_answer', '').upper()
-
-            is_correct = user_answer.upper() == correct_answer
-            if is_correct:
-                score += 1
-
-            user_answers[field_name] = user_answer
-
-            detailed_results.append({
-                'question': question['question'],
-                'user_answer': user_answer,
-                'correct_answer': correct_answer,
-                'is_correct': is_correct,
-                'explanation': f"Your answer: {user_answer}. Correct answer: {correct_answer}"
-            })
-
-        # Calculate final score
-        percentage = (score / total_questions) * 100 if total_questions > 0 else 0
-        passing_score = int(task.get('passing_score', 70))
-        passed = percentage >= passing_score
-
-        # Save quiz attempt to database
-        quiz_attempt_data = {
-            'student_id': user_id,
-            'course_id': course_id,
-            'module_id': module_id,
-            'task_id': task_id,
-            'score': round(percentage, 2),
-            'passed': passed,
-            'answers': json.dumps(user_answers),
-            'total_questions': total_questions,
-            'correct_answers': score,
-            'created_at': datetime.now(datetime.UTC).isoformat(),
-            'updated_at': datetime.now(datetime.UTC).isoformat()
-        }
-
-        # Insert quiz attempt
-        attempt_result = supabase.table('quiz_attempts').insert(quiz_attempt_data).execute()
-
-        # Update user progress
-        progress_data = {
-            'student_id': user_id,
-            'course_id': course_id,
-            'module_id': module_id,
-            'task_id': task_id,
-            'status': 'completed' if passed else 'in_progress',
-            'completion_percentage': 100 if passed else min(50, int(percentage)),
-            'completed_at': datetime.now(datetime.UTC).isoformat() if passed else None,
-            'updated_at': datetime.now(datetime.UTC).isoformat()
-        }
-
-        # Update progress - use update instead of upsert for this query
-        supabase.table('progress').update(progress_data).filter('student_id', 'eq', user_id).filter('task_id', 'eq', task_id).execute()
-
-        # Prepare response
-        response_data = {
-            'success': True,
-            'score': round(percentage, 2),
-            'passed': passed,
-            'total_questions': total_questions,
-            'correct_answers': score,
-            'passing_score': passing_score,
-            'results': detailed_results,
-            'message': f'Quiz completed! You scored {score}/{total_questions} ({percentage:.1f}%). {"🎉 Congratulations, you passed!" if passed else f"You need {passing_score}% to pass."}'
-        }
-
-        return jsonify(response_data)
-
-    except Exception as e:
-        print(f"Quiz submission error: {str(e)}")
-        return jsonify({'success': False, 'error': 'An error occurred while submitting the quiz'}), 500
 @app.route('/course/<course_id>/module/<module_id>/task/<task_id>/complete', methods=['POST'])
 @login_required
 def complete_task(course_id, module_id, task_id):
@@ -2058,7 +1868,18 @@ def admin_edit_task(task_id):
         # Parse existing quiz questions if this is a quiz task
         existing_questions = []
         if task.get('type') == 'quiz' and task.get('quiz_data'):
-            existing_questions = parse_quiz_questions(task['quiz_data'])
+            try:
+                # Try to parse as new JSON format first
+                quiz_data = json.loads(task['quiz_data'])
+                if isinstance(quiz_data, dict) and 'version' in quiz_data:
+                    # New format
+                    existing_questions = quiz_data.get('questions', [])
+                else:
+                    # Fall back to old format
+                    existing_questions = parse_quiz_questions(task['quiz_data'])
+            except (json.JSONDecodeError, TypeError):
+                # Handle case where quiz_data is not valid JSON
+                existing_questions = parse_quiz_questions(task['quiz_data'])
 
         # Get module and course details
         module_result = supabase.table('modules').select('*').eq('id', task['module_id']).execute()
@@ -2087,56 +1908,8 @@ def admin_edit_task(task_id):
             is_mandatory = request.form.get('is_mandatory') == 'on'
 
             # Handle quiz-specific settings
-            if task_type == 'quiz':
-                questions_data = []
 
-                # Collect all questions from form data
-                question_counter = 1
-                while True:
-                    question_text = request.form.get(f'question_text_{question_counter}')
-                    option_a = request.form.get(f'option_a_{question_counter}')
-                    option_b = request.form.get(f'option_b_{question_counter}')
-                    option_c = request.form.get(f'option_c_{question_counter}')
-                    option_d = request.form.get(f'option_d_{question_counter}')
-                    correct_answer = request.form.get(f'correct_answer_{question_counter}')
-
-                    if not question_text or not all([option_a, option_b, option_c, option_d]) or not correct_answer:
-                        break
-
-                    questions_data.append({
-                        'question': question_text,
-                        'options': [
-                            f'A) {option_a}',
-                            f'B) {option_b}',
-                            f'C) {option_c}',
-                            f'D) {option_d}'
-                        ],
-                        'correct_answer': correct_answer
-                    })
-                    question_counter += 1
-
-                if not questions_data:
-                    flash('At least one complete quiz question is required.', 'error')
-                    return render_template('admin_edit_task.html',
-                                         task=task,
-                                         module=module,
-                                         course=course,
-                                         username=session.get('username'))
-
-                # Convert questions to formatted text for storage
-                quiz_data = format_quiz_questions(questions_data)
-                print(f"DEBUG: Edit task - quiz_data='{quiz_data}'")
-                passing_score = int(request.form.get('passing_score', 70))
-                max_attempts = int(request.form.get('max_attempts', 3))
-                time_limit = int(request.form.get('time_limit', 0))
-                question_order = request.form.get('question_order', 'sequential')
-                quiz_instructions = request.form.get('quiz_instructions', '')
-
-                # Use quiz_data for quiz content, description for general description
-                description = f'Quiz with {len(questions_data)} questions'  # General description
-
-            # Handle assignment-specific settings
-            elif task_type == 'assignment':
+            if task_type == 'assignment':
                 assignment_instructions = request.form.get('assignment_instructions', '')
                 due_date = request.form.get('due_date')
                 max_file_size = int(request.form.get('max_file_size', 10))
@@ -2183,12 +1956,12 @@ def admin_edit_task(task_id):
                 # Add quiz-specific fields if this is a quiz
                 if task_type == 'quiz':
                     update_data.update({
-                        'quiz_data': quiz_data,
-                        'passing_score': passing_score,
-                        'max_attempts': max_attempts,
-                        'time_limit': time_limit,
-                        'question_order': question_order,
-                        'quiz_instructions': quiz_instructions
+                        'quiz_data': quiz_data_json,  # This is now a JSON string
+                        'passing_score': quiz_data['settings']['passing_score'],
+                        'max_attempts': quiz_data['settings']['max_attempts'],
+                        'time_limit': quiz_data['settings']['time_limit'],
+                        'question_order': quiz_data['settings']['question_order'],
+                        'quiz_instructions': quiz_data['settings']['instructions']
                     })
 
                 # Add assignment-specific fields if this is an assignment
@@ -2291,54 +2064,9 @@ def admin_add_task(module_id):
             require_replies = False
 
             # Handle quiz-specific settings
-            if task_type == 'quiz':
-                questions_data = []
-
-                # Collect all questions from form data
-                question_counter = 1
-                while True:
-                    question_text = request.form.get(f'question_text_{question_counter}')
-                    option_a = request.form.get(f'option_a_{question_counter}')
-                    option_b = request.form.get(f'option_b_{question_counter}')
-                    option_c = request.form.get(f'option_c_{question_counter}')
-                    option_d = request.form.get(f'option_d_{question_counter}')
-                    correct_answer = request.form.get(f'correct_answer_{question_counter}')
-
-                    if not question_text or not all([option_a, option_b, option_c, option_d]) or not correct_answer:
-                        break
-
-                    questions_data.append({
-                        'question': question_text,
-                        'options': [
-                            f'A) {option_a}',
-                            f'B) {option_b}',
-                            f'C) {option_c}',
-                            f'D) {option_d}'
-                        ],
-                        'correct_answer': correct_answer
-                    })
-                    question_counter += 1
-
-                if not questions_data:
-                    flash('At least one complete quiz question is required.', 'error')
-                    return render_template('admin_add_task.html',
-                                         module=module,
-                                         course=course,
-                                         username=session.get('username'))
-
-                # Convert questions to formatted text for storage
-                quiz_data = format_quiz_questions(questions_data)
-                passing_score = int(request.form.get('passing_score', 70))
-                max_attempts = int(request.form.get('max_attempts', 3))
-                time_limit = int(request.form.get('time_limit', 0))
-                question_order = request.form.get('question_order', 'sequential')
-                quiz_instructions = request.form.get('quiz_instructions', '')
-
-                # Use quiz_data for quiz content, description for general description
-                description = f'Quiz with {len(questions_data)} questions'  # General description
-
+        
             # Handle assignment-specific settings
-            elif task_type == 'assignment':
+            if task_type == 'assignment':
                 assignment_instructions = request.form.get('assignment_instructions', '')
                 due_date = request.form.get('due_date')
                 max_file_size = int(request.form.get('max_file_size', 10))
@@ -2383,18 +2111,10 @@ def admin_add_task(module_id):
                 }
 
                 # Add quiz-specific fields if this is a quiz
-                if task_type == 'quiz':
-                    task_data.update({
-                        'quiz_data': quiz_data,
-                        'passing_score': passing_score,
-                        'max_attempts': max_attempts,
-                        'time_limit': time_limit,
-                        'question_order': question_order,
-                        'quiz_instructions': quiz_instructions
-                    })
+                
 
                 # Add assignment-specific fields if this is an assignment
-                elif task_type == 'assignment':
+                if task_type == 'assignment':
                     task_data.update({
                         'assignment_instructions': assignment_instructions,
                         'due_date': due_date,
@@ -2417,14 +2137,14 @@ def admin_add_task(module_id):
                         'require_replies': require_replies
                     })
 
-                # Insert new task
-                result = supabase.table('tasks').insert(task_data).execute()
+                # Insert new test
+                supabase.table('tests').insert(test_data).execute()
 
                 # Re-enable RLS
                 supabase.rpc('enable_rls_for_admin', params={}).execute()
 
-                flash(f'Task "{title}" added successfully!', 'success')
-                return redirect(url_for('admin_module_tasks', module_id=module_id))
+                flash(f'Test "{title}" added successfully!', 'success')
+                return redirect(url_for('admin_module_tests', module_id=module_id))
 
             except Exception as e:
                 # Make sure to re-enable RLS if there's an error
@@ -3185,6 +2905,557 @@ def student_grades():
         import traceback
         traceback.print_exc()
         return redirect(url_for('dashboard'))
+
+
+@app.route('/admin/modules/<module_id>/tests/add', methods=['GET', 'POST'])
+@admin_required
+def admin_add_test(module_id):
+    try:
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        module = module_result.data[0]
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            test_type = request.form.get('type', 'quiz')  # Default to 'quiz' type
+            order_index = request.form.get('order_index', 1)
+            time_limit = int(request.form.get('time_limit', 60))  # Default 60 minutes
+            passing_score = int(request.form.get('passing_score', 70))  # Default 70%
+            max_attempts = int(request.form.get('max_attempts', 1))  # Default 1 attempt
+            is_mandatory = request.form.get('is_mandatory') == 'on'
+            instructions = request.form.get('instructions', '')
+            show_results = request.form.get('show_results') == 'on'
+            
+            # Validate required fields
+            if not all([title, description, test_type]):
+                flash('Title, description, and type are required.', 'error')
+                return render_template('admin_add_test.html',
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+            try:
+                # Temporarily disable RLS for admin operations
+                supabase.rpc('disable_rls_for_admin', params={}).execute()
+
+                # Prepare test data
+                test_data = {
+                    'module_id': module_id,
+                    'title': title,
+                    'description': description,
+                    'type': test_type,
+                    'order_index': int(order_index),
+                    'time_limit': time_limit,
+                    'passing_score': passing_score,
+                    'max_attempts': max_attempts,
+                    'is_mandatory': is_mandatory,
+                    'instructions': instructions,
+                    'show_results': show_results,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'updated_at': datetime.utcnow().isoformat()
+                }
+
+                # Insert new test
+                supabase.table('tests').insert(test_data).execute()
+
+                # Re-enable RLS
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+
+                flash(f'Test "{title}" added successfully!', 'success')
+                return redirect(url_for('admin_module_tests', module_id=module_id))
+
+            except Exception as e:
+                # Make sure to re-enable RLS if there's an error
+                try:
+                    supabase.rpc('enable_rls_for_admin', params={}).execute()
+                except:
+                    pass
+                flash(f'Error creating test: {str(e)}', 'error')
+                return render_template('admin_add_test.html',
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+        return render_template('admin_add_test.html',
+                            module=module,
+                            course=course,
+                            username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+@app.route('/admin/modules/<module_id>/tests')
+@admin_required
+def admin_module_tests(module_id):
+    try:
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        module = module_result.data[0]
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Get all tests for this module
+        tests_result = supabase.table('tests')\
+            .select('*')\
+            .eq('module_id', module_id)\
+            .order('order_index')\
+            .execute()
+
+        tests = tests_result.data if hasattr(tests_result, 'data') else []
+
+        return render_template('admin_module_tests.html',
+                            module=module,
+                            course=course,
+                            tests=tests,
+                            username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+@app.route('/admin/tests/edit/<test_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_test(test_id):
+    try:
+        # Get test details
+        test_result = supabase.table('tests').select('*').eq('id', test_id).execute()
+        if not test_result.data:
+            flash('Test not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        test = test_result.data[0]
+        
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', test['module_id']).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        module = module_result.data[0]
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            test_type = request.form.get('type', 'quiz')
+            order_index = request.form.get('order_index', 1)
+            time_limit = int(request.form.get('time_limit', 60))
+            passing_score = int(request.form.get('passing_score', 70))
+            max_attempts = int(request.form.get('max_attempts', 1))
+            is_mandatory = request.form.get('is_mandatory') == 'on'
+            instructions = request.form.get('instructions', '')
+            show_results = request.form.get('show_results') == 'on'
+            
+            # Validate required fields
+            if not all([title, description, test_type]):
+                flash('Title, description, and type are required.', 'error')
+                return render_template('admin_edit_test.html',
+                                    test=test,
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+            try:
+                # Temporarily disable RLS for admin operations
+                supabase.rpc('disable_rls_for_admin', params={}).execute()
+
+                # Prepare test data
+                update_data = {
+                    'title': title,
+                    'description': description,
+                    'type': test_type,
+                    'order_index': int(order_index),
+                    'time_limit': time_limit,
+                    'passing_score': passing_score,
+                    'max_attempts': max_attempts,
+                    'is_mandatory': is_mandatory,
+                    'instructions': instructions,
+                    'show_results': show_results
+                }
+
+                # Update the test
+                supabase.table('tests').update(update_data).eq('id', test_id).execute()
+
+                # Re-enable RLS
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+
+                flash(f'Test "{title}" updated successfully!', 'success')
+                return redirect(url_for('admin_module_tests', module_id=module['id']))
+
+            except Exception as e:
+                # Make sure to re-enable RLS if there's an error
+                try:
+                    supabase.rpc('enable_rls_for_admin', params={}).execute()
+                except Exception as e:
+                    pass
+                flash(f'Error updating test: {str(e)}', 'error')
+                return render_template('admin_edit_test.html',
+                                    test=test,
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+        return render_template('admin_edit_test.html',
+                            test=test,
+                            module=module,
+                            course=course,
+                            username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+
+@app.route('/admin/tests/<test_id>/manage', methods=['GET', 'POST'])
+@admin_required
+def admin_manage_test(test_id):
+    try:
+        # Get test details
+        test_result = supabase.table('tests').select('*').eq('id', test_id).execute()
+        if not test_result.data:
+            flash('Test not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        test = test_result.data[0]
+        
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', test['module_id']).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        module = module_result.data[0]
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Get test questions
+        questions_result = supabase.table('questions').select('*').eq('test_id', test_id).order('order_index').execute()
+        questions = questions_result.data if hasattr(questions_result, 'data') else []
+
+        # Get test statistics (placeholder - implement based on your needs)
+        average_score = 78  # This would come from actual calculations
+        completed_students = 42
+        in_progress_students = 8
+        not_started_students = 12
+        
+        # Calculate percentages
+        total_students = completed_students + in_progress_students + not_started_students
+        completed_percentage = (completed_students / total_students * 100) if total_students > 0 else 0
+        in_progress_percentage = (in_progress_students / total_students * 100) if total_students > 0 else 0
+        not_started_percentage = (not_started_students / total_students * 100) if total_students > 0 else 0
+
+        return render_template('admin_manage_test.html',
+                            test=test,
+                            module=module,
+                            course=course,
+                            questions=questions,
+                            average_score=average_score,
+                            completed_students=completed_students,
+                            in_progress_students=in_progress_students,
+                            not_started_students=not_started_students,
+                            completed_percentage=completed_percentage,
+                            in_progress_percentage=in_progress_percentage,
+                            not_started_percentage=not_started_percentage,
+                            username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+@app.route('/admin/tests/<test_id>/delete', methods=['POST'])
+@admin_required
+def admin_delete_test(test_id):
+    try:
+        # Get test details for confirmation
+        test_result = supabase.table('tests').select('*').eq('id', test_id).execute()
+        if not test_result.data:
+            flash('Test not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        test = test_result.data[0]
+        
+        # Temporarily disable RLS for admin operations
+        supabase.rpc('disable_rls_for_admin', params={}).execute()
+        
+        # Delete test questions first (if they exist)
+        supabase.table('questions').delete().eq('test_id', test_id).execute()
+        
+        # Delete the test
+        supabase.table('tests').delete().eq('id', test_id).execute()
+        
+        # Re-enable RLS
+        supabase.rpc('enable_rls_for_admin', params={}).execute()
+        
+        flash(f'Test "{test["title"]}" deleted successfully!', 'success')
+        return redirect(url_for('admin_module_tests', module_id=test['module_id']))
+
+    except Exception as e:
+        # Make sure to re-enable RLS if there's an error
+        try:
+            supabase.rpc('enable_rls_for_admin', params={}).execute()
+        except Exception as e:
+            print(f"Error re-enabling RLS: {str(e)}")
+        flash(f'Error deleting test: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+@app.route('/admin/questions/add/<test_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_add_question(test_id):
+    try:
+        # Get test details
+        test_result = supabase.table('tests').select('*').eq('id', test_id).execute()
+        if not test_result.data:
+            flash('Test not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        test = test_result.data[0]
+        
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', test['module_id']).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        module = module_result.data[0]
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        if request.method == 'POST':
+            question_text = request.form.get('question_text')
+            question_type = request.form.get('question_type', 'multiple_choice')
+            options = request.form.getlist('options[]')
+            correct_answer = request.form.get('correct_answer')
+            points = int(request.form.get('points', 1))
+            
+            # Validate required fields
+            if not question_text:
+                flash('Question text is required.', 'error')
+                return render_template('admin_add_question.html',
+                                    test=test,
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+            # For multiple choice questions only
+            if not options or len(options) < 2:
+                flash('Multiple choice questions must have at least 2 options.', 'error')
+                return render_template('admin_add_question.html',
+                                    test=test,
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+            if not correct_answer:
+                flash('Please select the correct answer for this multiple choice question.', 'error')
+                return render_template('admin_add_question.html',
+                                    test=test,
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+            try:
+                # Temporarily disable RLS for admin operations
+                supabase.rpc('disable_rls_for_admin', params={}).execute()
+
+                # Get next order index
+                questions_result = supabase.table('questions').select('order_index').eq('test_id', test_id).order('order_index', desc=True).execute()
+                next_order = (questions_result.data[0]['order_index'] + 1) if questions_result.data else 1
+
+                # Prepare question data
+                question_data = {
+                    'test_id': test_id,
+                    'question_text': question_text,
+                    'question_type': question_type,
+                    'options': options,
+                    'correct_answer': correct_answer,
+                    'points': points,
+                    'order_index': next_order
+                }
+
+                # Insert new question
+                supabase.table('questions').insert(question_data).execute()
+
+                # Re-enable RLS
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+
+                flash(f'Question added successfully!', 'success')
+                return redirect(url_for('admin_manage_test', test_id=test_id))
+
+            except Exception as e:
+                # Make sure to re-enable RLS if there's an error
+                try:
+                    supabase.rpc('enable_rls_for_admin', params={}).execute()
+                except:
+                    pass
+                flash(f'Error creating question: {str(e)}', 'error')
+                return render_template('admin_add_question.html',
+                                    test=test,
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+        return render_template('admin_add_question.html',
+                            test=test,
+                            module=module,
+                            course=course,
+                            username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+@app.route('/admin/questions/edit/<question_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_question(question_id):
+    try:
+        # Get question details
+        question_result = supabase.table('questions').select('*').eq('id', question_id).execute()
+        if not question_result.data:
+            flash('Question not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        question = question_result.data[0]
+        
+        # Get test, module and course details
+        test_result = supabase.table('tests').select('*').eq('id', question['test_id']).execute()
+        test = test_result.data[0] if test_result.data else {}
+        
+        module_result = supabase.table('modules').select('*').eq('id', test.get('module_id', '')).execute()
+        module = module_result.data[0] if module_result.data else {}
+        
+        course_result = supabase.table('courses').select('*').eq('id', module.get('course_id', '')).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        if request.method == 'POST':
+            question_text = request.form.get('question_text')
+            question_type = request.form.get('question_type', 'multiple_choice')
+            options = request.form.getlist('options[]')
+            correct_answer = request.form.get('correct_answer')
+            points = int(request.form.get('points', 1))
+            
+            # Validate required fields
+            if not question_text:
+                flash('Question text is required.', 'error')
+                return render_template('admin_edit_question.html',
+                                    question=question,
+                                    test=test,
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+            # For multiple choice questions only
+            if not options or len(options) < 2:
+                flash('Multiple choice questions must have at least 2 options.', 'error')
+                return render_template('admin_edit_question.html',
+                                    question=question,
+                                    test=test,
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+            if not correct_answer:
+                flash('Please select the correct answer for this multiple choice question.', 'error')
+                return render_template('admin_edit_question.html',
+                                    question=question,
+                                    test=test,
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+            try:
+                # Temporarily disable RLS for admin operations
+                supabase.rpc('disable_rls_for_admin', params={}).execute()
+
+                # Prepare question data
+                update_data = {
+                    'question_text': question_text,
+                    'question_type': question_type,
+                    'options': options,
+                    'correct_answer': correct_answer,
+                    'points': points
+                }
+
+                # Update the question
+                supabase.table('questions').update(update_data).eq('id', question_id).execute()
+
+                # Re-enable RLS
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+
+                flash(f'Question updated successfully!', 'success')
+                return redirect(url_for('admin_manage_test', test_id=test['id']))
+
+            except Exception as e:
+                # Make sure to re-enable RLS if there's an error
+                try:
+                    supabase.rpc('enable_rls_for_admin', params={}).execute()
+                except:
+                    pass
+                flash(f'Error updating question: {str(e)}', 'error')
+                return render_template('admin_edit_question.html',
+                                    question=question,
+                                    test=test,
+                                    module=module,
+                                    course=course,
+                                    username=session.get('username'))
+
+        return render_template('admin_edit_question.html',
+                            question=question,
+                            test=test,
+                            module=module,
+                            course=course,
+                            username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
+@app.route('/admin/questions/delete/<question_id>', methods=['POST'])
+@admin_required
+def admin_delete_question(question_id):
+    try:
+        # Get question details
+        question_result = supabase.table('questions').select('*').eq('id', question_id).execute()
+        if not question_result.data:
+            flash('Question not found.', 'error')
+            return redirect(url_for('admin_courses'))
+
+        question = question_result.data[0]
+        test_id = question['test_id']
+        
+        # Temporarily disable RLS for admin operations
+        supabase.rpc('disable_rls_for_admin', params={}).execute()
+        
+        # Delete the question
+        supabase.table('questions').delete().eq('id', question_id).execute()
+        
+        # Re-enable RLS
+        supabase.rpc('enable_rls_for_admin', params={}).execute()
+        
+        flash(f'Question deleted successfully!', 'success')
+        return redirect(url_for('admin_manage_test', test_id=test_id))
+
+    except Exception as e:
+        # Make sure to re-enable RLS if there's an error
+        try:
+            supabase.rpc('enable_rls_for_admin', params={}).execute()
+        except Exception as e:
+            pass
+        flash(f'Error deleting question: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
+
 
 
 if __name__ == '__main__':

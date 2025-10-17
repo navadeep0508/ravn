@@ -71,16 +71,20 @@
                         </div>
                     </div>
                     <div class="flex space-x-2 ml-4">
-                        <a href="{{ url_for('admin_module_tasks', module_id=module.id) }}"
-                           class="px-3 py-2 bg-purple-600 text-white text-sm font-semibold rounded-md hover:bg-purple-700 transition-colors">
-                            <i class="fas fa-tasks mr-1"></i>Tasks
-                        </a>
-                        <a href="{{ url_for('admin_edit_module', module_id=module.id) }}" class="px-3 py-2 bg-gray-600 text-white text-sm font-semibold rounded-md hover:bg-gray-700 transition-colors">
-                            <i class="fas fa-edit mr-1"></i>Edit
-                        </a>
-                        <button class="px-3 py-2 bg-red-600 text-white text-sm font-semibold rounded-md hover:bg-red-700 transition-colors">
-                            <i class="fas fa-trash mr-1"></i>Delete
-                        </button>
+                        <div class="flex space-x-4">
+                            <a href="{{ url_for('admin_module_tasks', module_id=module.id) }}" class="flex items-center text-blue-600 hover:text-blue-800">
+                                <i class="fas fa-tasks mr-1"></i> Tasks
+                                <span class="ml-1 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                                    {{ module.task_count or 0 }}
+                                </span>
+                            </a>
+                            <a href="{{ url_for('admin_module_tests', module_id=module.id) }}" class="flex items-center text-green-600 hover:text-green-800">
+                                <i class="fas fa-question-circle mr-1"></i> Tests
+                                <span class="ml-1 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                                    {{ module.test_count or 0 }}
+                                </span>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
