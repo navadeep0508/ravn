@@ -2523,6 +2523,10 @@ def admin_add_user():
             return render_template('admin_add_user.html',
                                  username=session.get('username'))
 
+    # For GET requests, show the form
+    return render_template('admin_add_user.html',
+                         username=session.get('username'))
+
 @app.route('/task/<task_id>/submit', methods=['GET', 'POST'])
 @login_required
 def submit_assignment(task_id):
