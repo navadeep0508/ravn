@@ -1,8 +1,8 @@
-{% extends "base.html" %}
+{% extends "dashboard_base.html" %}
 
-{% block title %}{{ course.title }} - Modules{% endblock %}
+{% block page_title %}{{ course.title }} - Modules{% endblock %}
 
-{% block content %}
+{% block dashboard_content %}
 <div class="min-h-screen bg-gray-50 py-8">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <!-- Header -->
@@ -28,8 +28,8 @@
                             </li>
                         </ol>
                     </nav>
-                    <h1 class="text-3xl font-bold text-gray-900 mt-2">{{ course.title }}</h1>
-                    <p class="text-gray-600 mt-1">{{ course.description }}</p>
+                    <h1 class="text-4xl font-extrabold text-gray-900 mt-2">{{ course.title }}</h1>
+                    <p class="text-gray-600 mt-2 text-lg">{{ course.description }}</p>
                 </div>
                 <div class="text-right">
                     <div class="text-sm text-gray-500">Overall Progress</div>
@@ -41,41 +41,41 @@
         <!-- Modules List -->
         <div class="space-y-6">
             {% for module in modules %}
-            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="bg-white rounded-lg shadow-xl hover:shadow-2xl transition-shadow duration-300 overflow-hidden">
                 <div class="p-6">
                     <div class="flex items-start justify-between">
                         <div class="flex-1">
                             <div class="flex items-center">
                                 <div class="flex-shrink-0">
-                                    <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                        <span class="text-blue-600 font-semibold">{{ loop.index }}</span>
+                                    <div class="w-12 h-12 bg-blue-500 text-white rounded-full flex items-center justify-center text-xl font-bold">
+                                        <span>{{ loop.index }}</span>
                                     </div>
                                 </div>
                                 <div class="ml-4 flex-1">
-                                    <h3 class="text-lg font-medium text-gray-900">{{ module.title }}</h3>
-                                    <p class="text-gray-600 mt-1">{{ module.description }}</p>
-                                    <div class="flex items-center mt-2 text-sm text-gray-500">
-                                        <i class="fas fa-clock mr-1"></i>
-                                        {{ module.estimated_time }}
+                                    <h3 class="text-xl font-bold text-gray-900">{{ module.title }}</h3>
+                                    <p class="text-gray-700 mt-1">{{ module.description }}</p>
+                                    <div class="flex items-center mt-3 text-sm text-gray-600">
+                                        <i class="fas fa-clock mr-2"></i>
+                                        <span>{{ module.estimated_time }}</span>
                                         {% if module.is_locked %}
-                                        <i class="fas fa-lock ml-3 mr-1"></i>
-                                        Locked
+                                        <i class="fas fa-lock ml-4 mr-2"></i>
+                                        <span>Locked</span>
                                         {% else %}
-                                        <i class="fas fa-unlock-alt ml-3 mr-1"></i>
-                                        Unlocked
+                                        <i class="fas fa-unlock-alt ml-4 mr-2"></i>
+                                        <span>Unlocked</span>
                                         {% endif %}
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="ml-4 flex-shrink-0">
+                        <div class="ml-4 flex-shrink-0 self-center">
                             {% if module.is_locked %}
-                            <button class="bg-gray-100 text-gray-400 px-4 py-2 rounded-md cursor-not-allowed" disabled>
+                            <button class="bg-gray-200 text-gray-500 px-5 py-2 rounded-lg cursor-not-allowed flex items-center" disabled>
                                 <i class="fas fa-lock mr-2"></i>Locked
                             </button>
                             {% else %}
                             <a href="{{ url_for('course_module_tasks', course_id=course.id, module_id=module.id) }}"
-                               class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
+                               class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center">
                                 <i class="fas fa-play mr-2"></i>Start Module
                             </a>
                             {% endif %}
@@ -85,13 +85,13 @@
                     <!-- Progress Bar -->
                     {% set module_progress = user_progress.get(module.id, {}) %}
                     {% if module_progress %}
-                    <div class="mt-4">
-                        <div class="flex items-center justify-between text-sm">
-                            <span class="text-gray-600">Progress</span>
-                            <span class="font-medium">{{ module_progress.get('status', 'not_started').title() }}</span>
+                    <div class="mt-5 pt-4 border-t border-gray-200">
+                        <div class="flex items-center justify-between text-sm mb-2">
+                            <span class="text-gray-700 font-medium">Progress</span>
+                            <span class="font-semibold text-blue-600">{{ module_progress.get('status', 'not_started').title() }} - {{ module_progress.get('completion_percentage', 0) }}%</span>
                         </div>
-                        <div class="mt-2 bg-gray-200 rounded-full h-2">
-                            <div class="bg-blue-600 h-2 rounded-full"
+                        <div class="bg-gray-200 rounded-full h-2.5">
+                            <div class="bg-blue-500 h-2.5 rounded-full transition-all duration-500 ease-out"
                                  style="width: {{ module_progress.get('completion_percentage', 0) }}%"></div>
                         </div>
                     </div>
@@ -103,10 +103,10 @@
 
         <!-- Empty State -->
         {% if not modules %}
-        <div class="bg-white rounded-lg shadow-md p-12 text-center">
-            <i class="fas fa-cubes text-6xl text-gray-300 mb-4"></i>
-            <h3 class="text-lg font-medium text-gray-900 mb-2">No modules available</h3>
-            <p class="text-gray-500">This course doesn't have any modules yet.</p>
+        <div class="bg-white rounded-lg shadow-xl p-12 text-center border border-gray-200">
+            <i class="fas fa-cubes text-6xl text-gray-400 mb-4"></i>
+            <h3 class="text-2xl font-semibold text-gray-900 mb-2">No modules available</h3>
+            <p class="text-gray-600 text-lg">This course doesn't have any modules yet. Check back later!</p>
         </div>
         {% endif %}
     </div>
