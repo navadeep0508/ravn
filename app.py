@@ -70,6 +70,75 @@ def convert_to_youtube_embed(url):
 
     return url  # Return original URL if no pattern matches
 
+def parse_quiz_questions(quiz_text):
+    """Parse quiz questions from text format into structured data"""
+    if not quiz_text:
+        return []
+
+    questions = []
+    lines = quiz_text.strip().split('\n')
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line:
+            i += 1
+            continue
+
+        # Check if this looks like a question (starts with number and dot)
+        if re.match(r'^\d+\.', line):
+            question_text = line
+            options = []
+            correct_answer = None
+
+            # Look for options in subsequent lines
+            j = i + 1
+            while j < len(lines):
+                next_line = lines[j].strip()
+                if not next_line:
+                    break
+
+                # Check if this is an option (starts with letter and parenthesis)
+                if re.match(r'^[A-Z]\)', next_line):
+                    option_text = next_line[3:].strip()  # Remove "A) " prefix
+                    options.append(option_text)
+
+                    # Check if this option is marked as correct
+                    if 'Correct Answer:' in next_line or '**' in next_line or next_line.endswith('*'):
+                        correct_answer = option_text
+                elif 'Correct Answer:' in next_line:
+                    # Extract correct answer from "Correct Answer: X" format
+                    correct_match = re.search(r'Correct Answer:\s*([A-Z])', next_line)
+                    if correct_match:
+                        correct_letter = correct_match.group(1)
+                        if options and len(options) >= ord(correct_letter) - ord('A') + 1:
+                            correct_answer = options[ord(correct_letter) - ord('A')]
+                    break
+                else:
+                    break
+
+                j += 1
+
+            # If no correct answer found, try to infer from formatting
+            if not correct_answer and options:
+                for option in options:
+                    if option.endswith('*') or '**' in option:
+                        correct_answer = option.replace('*', '').strip()
+                        break
+
+            questions.append({
+                'question': question_text,
+                'options': options,
+                'correct_answer': correct_answer or (options[0] if options else '')
+            })
+
+            i = j
+        else:
+            i += 1
+
+    return questions
+
+
 # Load environment variables
 load_dotenv()
 
@@ -79,6 +148,7 @@ app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())
 
 # Register the custom filters
 app.jinja_env.filters['youtube_id'] = youtube_id_filter
+app.jinja_env.filters['parse_quiz_questions'] = parse_quiz_questions
 
 app.jinja_env.filters['strftime'] = format_datetime
 app.jinja_env.filters['format_datetime'] = format_datetime  # Add an alias for more explicit usage
@@ -103,8 +173,11 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            flash('Please log in to access this page.', 'warning')
-            return redirect(url_for('login'))
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'message': 'Authentication required.'}), 401
+            else:
+                flash('Please log in to access this page.', 'warning')
+                return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -795,30 +868,66 @@ def course_module_tasks(course_id, module_id):
         tasks_result = supabase.table('tasks').select('*').eq('module_id', module_id).order('order_index').execute()
         tasks = tasks_result.data if tasks_result.data else []
 
-        # Debug: Print tasks data to see what's available
-        print(f"Tasks data for module {module_id} in course_module_tasks: {tasks}")
+        # Get tests for this module
+        tests_result = supabase.table('tests').select('*').eq('module_id', module_id).order('order_index').execute()
+        tests = tests_result.data if tests_result.data else []
 
-        # Ensure tasks have all required fields
-        for i, task in enumerate(tasks):
-            if not hasattr(task, 'get') or 'type' not in task:
-                print(f"Task {i} missing type field in course_module_tasks: {task}")
-                flash('Task data is incomplete.', 'error')
-                return redirect(url_for('course_modules', course_id=course_id))
-
-        # Get user progress for tasks in this module (query by task_id, not module_id)
+        # Get user progress for tasks in this module
         progress_result = supabase.table('progress').select('*').eq('student_id', user_id).in_('task_id', [str(task['id']) for task in tasks]).execute()
         user_progress = {p['task_id']: p for p in progress_result.data} if progress_result.data else {}
 
-        # Calculate module progress
-        completed_tasks = sum(1 for task in tasks if user_progress.get(str(task['id']), {}).get('status') == 'completed')
-        total_tasks = len(tasks)
-        module_progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+        # Calculate progress for tests (completed attempts)
+        test_progress = {}
+        for test in tests:
+            test_id = test['id']
+            # Find quiz tasks associated with this module
+            quiz_tasks_result = supabase.table('tasks').select('id').eq('module_id', module_id).eq('type', 'quiz').execute()
+            quiz_tasks = quiz_tasks_result.data if quiz_tasks_result.data else []
+            
+            # Initialize test progress with default values
+            test_progress[test_id] = {
+                'attempts': 0,
+                'best_score': 0,
+                'passed': False,
+                'completed': False
+            }
+            
+            # Check each quiz task for this module
+            for task in quiz_tasks:
+                task_id = task['id']
+                # Get quiz attempts for this task
+                attempts_result = supabase.table('quiz_attempts') \
+                    .select('*') \
+                    .eq('student_id', user_id) \
+                    .eq('task_id', task_id) \
+                    .order('created_at', desc=True) \
+                    .execute()
+                
+                attempts = attempts_result.data if attempts_result.data else []
+                if attempts:
+                    # Update test progress with the best attempt
+                    best_attempt = max(attempts, key=lambda x: x.get('score', 0))
+                    test_progress[test_id] = {
+                        'attempts': len(attempts),
+                        'best_score': best_attempt.get('score', 0),
+                        'passed': best_attempt.get('passed', False),
+                        'completed': best_attempt.get('completed_at') is not None
+                    }
+                    break  # Use the first quiz task's attempt data
+
+        # Calculate overall module progress
+        total_items = len(tasks) + len(tests)
+        completed_tasks = sum(1 for p in user_progress.values() if p and p.get('status') == 'completed')
+        completed_tests = sum(1 for p in test_progress.values() if p['completed'])
+        module_progress = ((completed_tasks + completed_tests) / total_items * 100) if total_items > 0 else 0
 
         return render_template('course_module_tasks.html',
                              course=course,
                              module=module,
                              tasks=tasks,
+                             tests=tests,
                              user_progress=user_progress,
+                             test_progress=test_progress,
                              module_progress=round(module_progress, 1),
                              username=session.get('username'))
 
@@ -1304,8 +1413,11 @@ def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            flash('Please log in to access this page.', 'warning')
-            return redirect(url_for('login'))
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'message': 'Authentication required.'}), 401
+            else:
+                flash('Please log in to access this page.', 'warning')
+                return redirect(url_for('login'))
 
         # Check if user is admin
         user_id = session.get('user_id')
@@ -3458,5 +3570,302 @@ def admin_delete_question(question_id):
 
 
 
+@app.route('/course/<course_id>/module/<module_id>/test/<test_id>')
+@login_required
+def course_test(course_id, module_id, test_id):
+    try:
+        user_id = session.get('user_id')
+
+        # Get test details
+        test_result = supabase.table('tests').select('*').eq('id', test_id).execute()
+        if not test_result.data:
+            flash('Test not found.', 'error')
+            return redirect(url_for('course_modules', course_id=course_id))
+
+        test = test_result.data[0]
+
+        # Verify test belongs to the specified module
+        if test['module_id'] != module_id:
+            flash('Test not found in this module.', 'error')
+            return redirect(url_for('course_modules', course_id=course_id))
+
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('course_modules', course_id=course_id))
+
+        module = module_result.data[0]
+        course_result = supabase.table('courses').select('*').eq('id', course_id).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Check if user is enrolled in the course
+        enrolled_result = supabase.table('enrollments').select('id').eq('student_id', user_id).eq('course_id', course_id).eq('status', 'active').execute()
+        if not enrolled_result.data:
+            flash('You must be enrolled in this course to take tests.', 'error')
+            return redirect(url_for('courses'))
+
+        # Get test questions
+        questions_result = supabase.table('questions').select('*').eq('test_id', test_id).order('order_index').execute()
+        questions = questions_result.data if hasattr(questions_result, 'data') else []
+
+        # Find the quiz task for this module (assuming one quiz per module for now)
+        task_result = supabase.table('tasks') \
+            .select('id') \
+            .eq('module_id', module_id) \
+            .eq('type', 'quiz') \
+            .execute()
+            
+        if not task_result.data:
+            flash('No quiz task found for this module.', 'error')
+            return redirect(url_for('course_modules', course_id=course_id))
+            
+        task_id = task_result.data[0]['id']
+
+        # Check if user has already taken this test
+        attempts_result = supabase.table('quiz_attempts') \
+            .select('*') \
+            .eq('student_id', user_id) \
+            .eq('task_id', task_id) \
+            .order('created_at', desc=True) \
+            .execute()
+        attempts = attempts_result.data if attempts_result.data else []
+
+        # Check if user has reached max attempts
+        if len(attempts) >= test['max_attempts']:
+            flash(f'You have reached the maximum number of attempts ({test["max_attempts"]}) for this test.', 'error')
+            return redirect(url_for('course_module_tasks', course_id=course_id, module_id=module_id))
+
+        # Check if there's an in-progress attempt (not completed)
+        in_progress_attempt = None
+        for attempt in attempts:
+            if not attempt.get('completed_at'):
+                in_progress_attempt = attempt
+                break
+
+        # If no in-progress attempt, create one
+        if not in_progress_attempt:
+            try:
+                # Temporarily disable RLS for test operations
+                supabase.rpc('disable_rls_for_admin', params={}).execute()
+
+                # Create new attempt with required fields from schema
+                attempt_data = {
+                    'student_id': user_id,
+                    'task_id': task_id,
+                    'course_id': course_id,
+                    'module_id': module_id,
+                    'score': 0,
+                    'passed': False,
+                    'answers': {},
+                    'total_questions': len(questions),
+                    'correct_answers': 0,
+                    'created_at': datetime.now().isoformat(),
+                    'updated_at': datetime.now().isoformat()
+                }
+
+                attempt_result = supabase.table('quiz_attempts').insert(attempt_data).execute()
+                if attempt_result.data:
+                    in_progress_attempt = attempt_result.data[0]
+
+                # Re-enable RLS
+                supabase.rpc('enable_rls_for_admin', params={}).execute()
+
+            except Exception as e:
+                flash(f'Error starting test: {str(e)}', 'error')
+                return redirect(url_for('course_modules', course_id=course_id))
+
+        # Get user's current answers if they exist
+        current_answers = in_progress_attempt.get('answers', {}) if in_progress_attempt else {}
+
+        return render_template('course_test.html',
+                             test=test,
+                             module=module,
+                             course=course,
+                             questions=questions,
+                             attempt=in_progress_attempt,
+                             current_question=0,  # Start from first question
+                             current_answers=current_answers,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('courses'))
+
+
+@app.route('/course/<course_id>/module/<module_id>/test/<test_id>/submit', methods=['POST', 'OPTIONS'])
+@login_required
+def submit_quiz_attempt(course_id, module_id, test_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        response = jsonify({'success': False, 'message': 'User not authenticated.'})
+        response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response, 401
+    if request.method == 'OPTIONS':
+        response = jsonify({'success': True})
+        response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response
+
+    try:
+        print(f"Starting quiz submission for test {test_id} by user {session.get('user_id')}")
+        user_id = session.get('user_id')
+        
+        # Get JSON data with error handling
+        if not request.is_json:
+            return jsonify({'success': False, 'message': 'Request must be JSON'}), 400
+            
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No data received'}), 400
+            
+        print(f"Received data: {data}")
+        
+        # Find the quiz task for this module
+        print(f"Looking for quiz task for module {module_id}")
+        task_result = supabase.table('tasks') \
+            .select('id') \
+            .eq('module_id', module_id) \
+            .eq('type', 'quiz') \
+            .execute()
+            
+        if not task_result.data:
+            print(f"No quiz task found for module {module_id}")
+            return jsonify({'success': False, 'message': 'No quiz task found for this module'}), 404
+            
+        task_id = task_result.data[0]['id']
+        print(f"Found quiz task ID: {task_id}")
+        
+        # Get the latest attempt for this user and task
+        print(f"Looking for active quiz attempt for user {user_id} and task {task_id}")
+        attempt_result = supabase.table('quiz_attempts') \
+            .select('*') \
+            .eq('student_id', user_id) \
+            .eq('task_id', task_id) \
+            .order('created_at', desc=True) \
+            .limit(1) \
+            .execute()
+            
+        if not attempt_result.data:
+            print("No active quiz attempt found")
+            return jsonify({'success': False, 'message': 'No active quiz attempt found'}), 400
+            
+        attempt = attempt_result.data[0]
+        print(f"Found attempt: {attempt['id']}")
+        
+        # Update the attempt with the submitted answers
+        update_data = {
+            'answers': data.get('answers', {}),
+
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        # Calculate score if all answers are submitted
+        if 'answers' in data:
+            print("Calculating score...")
+            # Get the correct answers
+            questions_result = supabase.table('questions') \
+                .select('id, correct_answer') \
+                .eq('test_id', test_id) \
+                .execute()
+                
+            if not questions_result.data:
+                print("No questions found for this test")
+                return jsonify({'success': False, 'message': 'No questions found for this test'}), 400
+                
+            correct_answers = {str(q['id']): q['correct_answer'] for q in questions_result.data}
+            print(f"Correct answers: {correct_answers}")
+            
+            # Calculate score
+            correct_count = 0
+            user_answers = data['answers']
+            print(f"User answers: {user_answers}")
+            
+            for q_id, answer in user_answers.items():
+                if q_id in correct_answers and answer == correct_answers[q_id]:
+                    correct_count += 1
+            
+            total_questions = len(correct_answers)
+            score = (correct_count / total_questions) * 100 if total_questions > 0 else 0
+            
+            update_data.update({
+                'score': score,
+                'correct_answers': correct_count,
+                'total_questions': total_questions,
+                'passed': score >= 70  # Assuming 70% is passing
+            })
+            
+            print(f"Score calculated: {score}% ({correct_count}/{total_questions} correct)")
+        
+        # Mark the quiz task as completed in progress table
+        try:
+            # Check if progress record exists for this user and task
+            progress_result = supabase.table('progress') \
+                .select('*') \
+                .eq('student_id', user_id) \
+                .eq('task_id', task_id) \
+                .execute()
+
+            if progress_result.data:
+                # Update existing progress record
+                supabase.table('progress').update({
+                    'status': 'completed' if update_data.get('passed', False) else 'in_progress',
+                    'completion_percentage': update_data.get('score', 0),
+                    'completed_at': datetime.now().isoformat() if update_data.get('passed', False) else None,
+                    'updated_at': datetime.now().isoformat()
+                }).eq('student_id', user_id).eq('task_id', task_id).execute()
+            else:
+                # Create new progress record
+                supabase.table('progress').insert({
+                    'student_id': user_id,
+                    'task_id': task_id,
+                    'course_id': course_id,
+                    'module_id': module_id,
+                    'status': 'completed' if update_data.get('passed', False) else 'in_progress',
+                    'completion_percentage': update_data.get('score', 0),
+                    'completed_at': datetime.now().isoformat() if update_data.get('passed', False) else None,
+                    'created_at': datetime.now().isoformat(),
+                    'updated_at': datetime.now().isoformat()
+                }).execute()
+
+        except Exception as progress_error:
+            print(f"Warning: Could not update progress table: {str(progress_error)}")
+            # Don't fail the submission if progress update fails
+        
+        response = jsonify({
+            'success': True,
+            'score': update_data.get('score', 0),
+            'passed': update_data.get('passed', False),
+            'correct_answers': update_data.get('correct_answers', 0),
+            'total_questions': update_data.get('total_questions', 0)
+        })
+        response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response
+        
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error in submit_quiz_attempt: {str(e)}\n{error_trace}")
+        response = jsonify({
+            'success': False, 
+            'message': 'An error occurred while processing your submission',
+            'error': str(e),
+            'trace': error_trace
+        })
+        response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response, 500
+
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, host='0.0.0.0')

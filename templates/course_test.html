@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+
+{% block title %}{{ test.title }} - {{ module.title }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <nav class="flex" aria-label="Breadcrumb">
+                        <ol class="flex items-center space-x-4">
+                            <li>
+                                <a href="{{ url_for('courses') }}" class="text-gray-500 hover:text-gray-700">
+                                    <i class="fas fa-arrow-left mr-2"></i>Courses
+                                </a>
+                            </li>
+                            <li>
+                                <span class="text-gray-400">/</span>
+                                <a href="{{ url_for('course_detail', course_id=course.id) }}" class="text-gray-500 hover:text-gray-700 ml-4">
+                                    {{ course.title }}
+                                </a>
+                            </li>
+                            <li>
+                                <span class="text-gray-400">/</span>
+                                <a href="{{ url_for('course_modules', course_id=course.id) }}" class="text-gray-500 hover:text-gray-700 ml-4">
+                                    Modules
+                                </a>
+                            </li>
+                            <li>
+                                <span class="text-gray-400">/</span>
+                                <a href="{{ url_for('course_module_tasks', course_id=course.id, module_id=module.id) }}" class="text-gray-500 hover:text-gray-700 ml-4">
+                                    {{ module.title }}
+                                </a>
+                            </li>
+                            <li>
+                                <span class="text-gray-400">/</span>
+                                <span class="text-gray-900 font-medium ml-4">{{ test.title }}</span>
+                            </li>
+                        </ol>
+                    </nav>
+                    <h1 class="text-3xl font-bold text-gray-900 mt-2">{{ test.title }}</h1>
+                    <p class="text-gray-600 mt-1">{{ test.description }}</p>
+                </div>
+                <div class="text-right">
+                    <div class="text-sm text-gray-500">Test Progress</div>
+                    <div class="text-2xl font-bold text-blue-600">{{ current_question + 1 }} / {{ questions | length }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Instructions -->
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden mb-6">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                            <i class="fas fa-clipboard-list text-blue-600"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold text-gray-800">{{ test.title }}</h2>
+                            <div class="flex items-center text-sm text-gray-500">
+                                <i class="fas fa-clock mr-1"></i>
+                                {{ test.time_limit or 60 }} minutes
+                                {% if test.max_attempts > 1 %}
+                                <i class="fas fa-redo ml-3 mr-1"></i>
+                                {{ test.max_attempts }} attempts
+                                {% endif %}
+                                <i class="fas fa-trophy ml-3 mr-1 text-yellow-500"></i>
+                                {{ test.passing_score }}% to pass
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="px-3 py-1 bg-{{ 'green' if attempt else 'blue' }}-100 text-{{ 'green' if attempt else 'blue' }}-800 text-sm font-medium rounded-full">
+                            {{ 'In Progress' if attempt else 'Not Started' }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6">
+                {% if test.instructions %}
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Instructions</h3>
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p class="text-gray-700">{{ test.instructions }}</p>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Test Content -->
+                {% if questions %}
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <!-- Test Header -->
+                    <div class="bg-gradient-to-r from-purple-500 to-blue-600 text-white p-4 rounded-t-lg">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <i class="fas fa-clipboard-list mr-3 text-xl"></i>
+                                <div>
+                                    <h4 class="text-lg font-semibold">Test Questions</h4>
+                                    <p class="text-purple-100 text-sm">{{ questions | length }} questions • Multiple choice</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-2xl font-bold" id="question-counter">{{ current_question + 1 }} / {{ questions | length }}</div>
+                                <div class="text-sm text-purple-100">Question</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Test Content -->
+                    <div class="p-6">
+                        <form id="test-form" onsubmit="return false;">
+                            <div id="test-questions">
+                                {% for question in questions %}
+                                <div class="test-question {% if not loop.first %}hidden{% endif %}" data-question="{{ loop.index }}">
+                                    <div class="mb-6">
+                                        <div class="flex items-start mb-4">
+                                            <span class="bg-purple-100 text-purple-800 text-sm font-medium px-3 py-1 rounded-full mr-3 flex-shrink-0">{{ loop.index }}</span>
+                                            <h5 class="text-lg font-medium text-gray-800 leading-tight">{{ question.question_text }}</h5>
+                                        </div>
+
+                                        <div class="space-y-3 ml-8">
+                                            {% for option in question.options %}
+                                            <label class="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                                                <input type="radio" name="question_{{ loop.index }}" value="{{ option }}" class="mr-3 text-purple-600 focus:ring-purple-500" {{ 'checked' if current_answers.get(question.id) == option else '' }}>
+                                                <span class="text-gray-700">{{ option }}</span>
+                                            </label>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+
+                            <!-- Test Navigation -->
+                            <div class="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
+                                <button type="button" id="prev-btn" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                    <i class="fas fa-chevron-left mr-2"></i>Previous
+                                </button>
+
+                                <div class="flex space-x-2">
+                                    {% for i in range(1, questions | length + 1) %}
+                                    <button type="button" class="test-nav-btn w-10 h-10 rounded-full flex items-center justify-center {% if loop.first %}bg-purple-600 text-white{% else %}bg-gray-100 text-gray-700{% endif %}" data-question="{{ i }}">
+                                        {{ i }}
+                                    </button>
+                                    {% endfor %}
+                                </div>
+
+                                <button type="button" id="next-btn" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                                    Next <i class="fas fa-chevron-right ml-2"></i>
+                                </button>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <div class="mt-8 pt-6 border-t border-gray-200">
+                                <button type="submit" class="w-full md:w-auto px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors">
+                                    <i class="fas fa-paper-plane mr-2"></i>Submit Test
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Test Results (shown after submission) -->
+                <div id="test-results" class="hidden mt-6">
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                        <div class="p-6">
+                            <div class="text-center mb-6">
+                                <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <i class="fas fa-trophy text-2xl text-green-600"></i>
+                                </div>
+                                <h4 class="text-xl font-semibold text-gray-800 mb-2">Test Completed!</h4>
+                                <div class="text-3xl font-bold text-green-600" id="test-score">0%</div>
+                                <p class="text-gray-600" id="test-feedback"></p>
+                            </div>
+
+                            <div class="space-y-4" id="question-review">
+                                <!-- Question review will be populated here -->
+                            </div>
+
+                            <div class="mt-6 text-center">
+                                <a href="{{ url_for('course_module_tasks', course_id=course.id, module_id=module.id) }}"
+                                   class="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                                    <i class="fas fa-arrow-left mr-2"></i>Back to Tasks & Tests
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="bg-gray-100 rounded-lg p-8 text-center">
+                    <i class="fas fa-exclamation-triangle text-4xl text-yellow-500 mb-4"></i>
+                    <p class="text-gray-600 mb-2">No questions found</p>
+                    <p class="text-sm text-gray-500">This test needs to be configured with questions.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const questions = document.querySelectorAll('.test-question');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const submitBtn = document.querySelector('button[type="submit"]');
+    const questionCounter = document.getElementById('question-counter');
+    const testForm = document.getElementById('test-form');
+    const testResults = document.getElementById('test-results');
+
+    // Get course, module, and test IDs from the URL
+    const pathParts = window.location.pathname.split('/');
+    const courseId = pathParts[2];
+    const moduleId = pathParts[4];
+    const testId = pathParts[6];
+
+    let currentQuestion = {{ current_question }};
+    const totalQuestions = questions.length;
+
+    function updateQuestionDisplay() {
+        // Hide all questions
+        questions.forEach(q => q.classList.add('hidden'));
+
+        // Show current question
+        if (questions[currentQuestion]) {
+            questions[currentQuestion].classList.remove('hidden');
+        }
+
+        // Update counter
+        questionCounter.textContent = `${currentQuestion + 1} / ${totalQuestions}`;
+
+        // Update navigation buttons
+        prevBtn.disabled = currentQuestion === 0;
+        nextBtn.innerHTML = currentQuestion === totalQuestions - 1 ?
+            '<i class="fas fa-paper-plane mr-2"></i>Submit Test' :
+            'Next <i class="fas fa-chevron-right ml-2"></i>';
+
+        // Update nav buttons
+        document.querySelectorAll('.test-nav-btn').forEach((btn, index) => {
+            btn.classList.toggle('bg-purple-600', index === currentQuestion);
+            btn.classList.toggle('text-white', index === currentQuestion);
+            btn.classList.toggle('bg-gray-100', index !== currentQuestion);
+            btn.classList.toggle('text-gray-700', index !== currentQuestion);
+        });
+    }
+
+    // Navigation event listeners
+    prevBtn.addEventListener('click', function() {
+        if (currentQuestion > 0) {
+            currentQuestion--;
+            updateQuestionDisplay();
+        }
+    });
+
+    nextBtn.addEventListener('click', function() {
+        if (currentQuestion < totalQuestions - 1) {
+            currentQuestion++;
+            updateQuestionDisplay();
+        } else {
+            // Submit test when on last question and next is clicked
+            testForm.dispatchEvent(new Event('submit'));
+        }
+    });
+
+    // Nav button clicks
+    document.querySelectorAll('.test-nav-btn').forEach((btn, index) => {
+        btn.addEventListener('click', function() {
+            currentQuestion = index;
+            updateQuestionDisplay();
+        });
+    });
+
+    // Collect all answers
+    function collectAnswers() {
+        const answers = {};
+        questions.forEach((question, index) => {
+            const questionId = index + 1; // Assuming questions are 1-indexed
+            const selectedOption = question.querySelector('input[type="radio"]:checked');
+            if (selectedOption) {
+                answers[questionId] = selectedOption.value;
+            }
+        });
+        return answers;
+    }
+
+    // Handle form submission
+    testForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        // Show loading state
+        const submitBtn = testForm.querySelector('button[type="submit"]');
+        const originalBtnText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
+
+        try {
+            // Collect all answers
+            const answers = collectAnswers();
+            console.log('Submitting answers:', answers);
+
+            // Check if all questions are answered
+            const unanswered = totalQuestions - Object.keys(answers).length;
+            if (unanswered > 0) {
+                if (!confirm(`You have ${unanswered} unanswered question${unanswered > 1 ? 's' : ''}. Are you sure you want to submit?`)) {
+                    throw new Error('Submission cancelled');
+                }
+            }
+
+            // Submit the test
+            const response = await fetch(`/course/${courseId}/module/${moduleId}/test/${testId}/submit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ answers })
+            });
+
+            // Check if the response is JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error('Expected JSON, got:', text);
+                throw new Error('Server returned an invalid response');
+            }
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to submit test');
+            }
+
+            // Show results
+            showTestResults(data);
+
+        } catch (error) {
+            console.error('Error submitting test:', error);
+            if (error.message !== 'Submission cancelled') {
+                alert('Error submitting test: ' + error.message);
+            }
+        } finally {
+            // Reset button state
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnText;
+            }
+        }
+    });
+
+    function showTestResults(data) {
+        // Hide the test form and show results
+        const testQuestions = document.getElementById('test-questions');
+        const testResults = document.getElementById('test-results');
+
+        if (testQuestions) testQuestions.classList.add('hidden');
+        if (testResults) testResults.classList.remove('hidden');
+
+        // Update the results
+        const scoreElement = document.getElementById('test-score');
+        const feedbackElement = document.getElementById('test-feedback');
+        const questionReviewElement = document.getElementById('question-review');
+
+        // Update score
+        const score = data.score || 0;
+        const passed = data.passed || false;
+        const correctAnswers = data.correct_answers || 0;
+        const totalQuestions = data.total_questions || 1; // Avoid division by zero
+
+        if (scoreElement) {
+            scoreElement.textContent = `${score.toFixed(1)}%`;
+        }
+
+        if (feedbackElement) {
+            feedbackElement.textContent = passed ?
+                `Congratulations! You passed with ${correctAnswers} out of ${totalQuestions} correct answers.` :
+                `You scored ${score.toFixed(1)}% (${correctAnswers}/${totalQuestions} correct). You needed 70% to pass.`;
+        }
+
+        // Update the progress bar
+        const progressBar = document.getElementById('progress-bar');
+        if (progressBar) {
+            progressBar.style.width = `${score}%`;
+            progressBar.className = `h-2.5 rounded-full ${passed ? 'bg-green-500' : 'bg-red-500'}`;
+        }
+
+        // Clear any existing question review
+        if (questionReviewElement) {
+            questionReviewElement.innerHTML = '';
+        }
+    }
+
+    // Initialize
+    updateQuestionDisplay();
+});
+</script>
+{% endblock %}
+
+<!-- Progress bar template -->
