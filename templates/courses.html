@@ -72,7 +72,11 @@
 <!-- Enhanced Course Grid -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
     {% for course in courses %}
-    <div class="group bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 overflow-hidden border border-gray-100">
+    <div class="group bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 overflow-hidden border border-gray-100 course-card"
+         data-category="{{ course.category }}"
+         data-level="{{ course.level }}"
+         data-title="{{ course.title }}"
+         data-description="{{ course.description }}">
         <!-- Enhanced Course Image with Gradient Overlay -->
         <div class="relative h-48 bg-gradient-to-br from-{{ course.color }}-400 via-{{ course.color }}-500 to-{{ course.color }}-600 flex items-center justify-center overflow-hidden">
             <div class="absolute inset-0 bg-black bg-opacity-20 group-hover:bg-opacity-10 transition-all duration-300"></div>
@@ -228,7 +232,8 @@
 <!-- Enhanced Featured Courses -->
 <div class="mt-12">
     <div class="text-center mb-8">
-        <h2 class="text-3xl font-bold text-gray-800 mb-4 flex items-center justify-center">as fa-fire text-orange-500 mr-3"></i>
+        <h2 class="text-3xl font-bold text-gray-800 mb-4 flex items-center justify-center">
+            <i class="fas fa-fire text-orange-500 mr-3"></i>
             Most Popular Courses
         </h2>
         <p class="text-gray-600 max-w-2xl mx-auto">
@@ -237,9 +242,12 @@
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {% for cou
-            <i class="frse in courses[:2] %}
-        <div class="group bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100">
+        {% for course in courses[:2] %}
+        <div class="group bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100 course-card"
+             data-category="{{ course.category }}"
+             data-level="{{ course.level }}"
+             data-title="{{ course.title }}"
+             data-description="{{ course.description }}">
             <div class="flex">
                 <div class="w-1/3 bg-gradient-to-br from-{{ course.color }}-400 via-{{ course.color }}-500 to-{{ course.color }}-600 flex items-center justify-center relative overflow-hidden">
                     <div class="absolute inset-0 bg-black bg-opacity-20 group-hover:bg-opacity-10 transition-all duration-300"></div>
@@ -346,7 +354,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }, observerOptions);
 
-    const courseCards = document.querySelectorAll('.group.bg-white');
+    const courseCards = document.querySelectorAll('.course-card');
     courseCards.forEach(card => {
         card.classList.add('course-card');
         observer.observe(card);
@@ -363,14 +371,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const selectedLevel = levelFilter.value;
 
         courseCards.forEach(card => {
-            const title = card.querySelector('h3').textContent.toLowerCase();
-            const description = card.querySelector('p').textContent.toLowerCase();
-            const category = card.querySelector('.bg-.*-100').textContent.toLowerCase();
-            const level = card.querySelector('.bg-.*-100').textContent.toLowerCase();
+            const title = card.dataset.title.toLowerCase();
+            const description = card.dataset.description.toLowerCase();
+            const category = card.dataset.category.toLowerCase();
+            const level = card.dataset.level.toLowerCase();
 
             const matchesSearch = title.includes(searchTerm) || description.includes(searchTerm);
-            const matchesCategory = selectedCategory === 'All Categories' || category.includes(selectedCategory.toLowerCase());
-            const matchesLevel = selectedLevel === 'All Levels' || level.includes(selectedLevel.toLowerCase());
+            const matchesCategory = selectedCategory === 'All Categories' || category === selectedCategory.toLowerCase();
+            const matchesLevel = selectedLevel === 'All Levels' || level === selectedLevel.toLowerCase();
 
             if (matchesSearch && matchesCategory && matchesLevel) {
                 card.style.display = 'block';
