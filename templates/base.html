@@ -9,9 +9,10 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&display=swap');
-        
+
         body {
             font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
         }
 
         .font-logo {
@@ -21,37 +22,37 @@
         .soft-shadow {
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         }
-        
+
         .gradient-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-        
+
         .glass-effect {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        
+
         .input-focus:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
-        
+
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             transition: transform 0.2s, box-shadow 0.2s;
         }
-        
+
         .btn-primary:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
         }
-        
+
         .fade-in {
             animation: fadeIn 0.5s ease-in;
         }
-        
+
         @keyframes fadeIn {
             from {
                 opacity: 0;
@@ -62,9 +63,15 @@
                 transform: translateY(0);
             }
         }
+
+        .auth-card {
+            background: white;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+        }
     </style>
 </head>
-<body class="gradient-bg min-h-screen">
+<body class="min-h-screen">
     <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -78,9 +85,9 @@
             </div>
         {% endif %}
     {% endwith %}
-    
+
     {% block content %}{% endblock %}
-    
+
     <script>
         // Auto-hide flash messages after 5 seconds
         setTimeout(() => {

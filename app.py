@@ -139,6 +139,22 @@ def parse_quiz_questions(quiz_text):
     return questions
 
 
+def get_unread_notifications_count(user_id, user_role):
+    """Calculate the number of unread notifications for a user"""
+    try:
+        # This would typically query a notifications table in a real app
+        # For now, return a sample count based on user role
+        if user_role == 'student':
+            return 3  # Sample unread count for students
+        elif user_role == 'teacher':
+            return 5  # Sample unread count for teachers
+        else:  # admin
+            return 2  # Sample unread count for admins
+    except Exception as e:
+        print(f"Error calculating unread notifications: {str(e)}")
+        return 0
+
+
 # Load environment variables
 load_dotenv()
 
@@ -153,6 +169,16 @@ app.jinja_env.filters['parse_quiz_questions'] = parse_quiz_questions
 app.jinja_env.filters['strftime'] = format_datetime
 app.jinja_env.filters['format_datetime'] = format_datetime  # Add an alias for more explicit usage
 app.jinja_env.filters['datetimeformat'] = format_datetime  # Add datetimeformat alias for compatibility
+
+@app.context_processor
+def inject_unread_count():
+    """Inject unread notifications count into all templates"""
+    if 'user_id' in session and 'role' in session:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+        unread_count = get_unread_notifications_count(user_id, user_role)
+        return {'unread_count': unread_count}
+    return {'unread_count': 0}
 
 # Initialize Supabase client
 supabase_url = os.getenv('SUPABASE_URL')
@@ -250,7 +276,7 @@ def index():
             # Render a fallback dashboard with minimal data
             return render_template('dashboard.html', username=username, courses=[], enrolled_courses=0, completed_courses=0, total_hours=0, enrolled_course_details=[], average_score=0, completion_rate=0, leaderboard_rank='N/A', upcoming_tasks=[], recent_activity=[])
 
-    return redirect(url_for('login'))
+    return redirect(url_for('landing'))
 
 
 @app.route('/signup', methods=['GET', 'POST'])
@@ -5494,5 +5520,198 @@ def submit_quiz_attempt(course_id, module_id, test_id):
         return response, 500
 
 
+@app.route('/notifications')
+@login_required
+def notifications():
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+
+        # Sample notifications data - in a real app, this would come from a notifications table
+        notifications_list = []
+
+        if user_role == 'student':
+            # Student notifications
+            notifications_list = [
+                {
+                    'id': 1,
+                    'type': 'grade',
+                    'title': 'Assignment Graded',
+                    'message': 'Your assignment "Final Project" has been graded. You scored 85/100.',
+                    'course_name': 'Computer Science Basics',
+                    'timestamp': '2024-01-15T10:30:00Z',
+                    'read': False,
+                    'priority': 'high',
+                    'icon': 'fa-graduation-cap'
+                },
+                {
+                    'id': 2,
+                    'type': 'deadline',
+                    'title': 'Upcoming Deadline',
+                    'message': 'Assignment "Machine Learning Project" is due in 2 days.',
+                    'course_name': 'Data Science Fundamentals',
+                    'timestamp': '2024-01-14T14:20:00Z',
+                    'read': False,
+                    'priority': 'medium',
+                    'icon': 'fa-clock'
+                },
+                {
+                    'id': 3,
+                    'type': 'enrollment',
+                    'title': 'Course Enrollment Confirmed',
+                    'message': 'You have successfully enrolled in "Advanced Python Programming".',
+                    'course_name': 'Advanced Python Programming',
+                    'timestamp': '2024-01-13T09:15:00Z',
+                    'read': True,
+                    'priority': 'low',
+                    'icon': 'fa-check-circle'
+                },
+                {
+                    'id': 4,
+                    'type': 'quiz',
+                    'title': 'Quiz Completed',
+                    'message': 'You have completed the quiz "Python Basics Quiz 3" with a score of 92%.',
+                    'course_name': 'Python Programming',
+                    'timestamp': '2024-01-12T16:45:00Z',
+                    'read': True,
+                    'priority': 'low',
+                    'icon': 'fa-clipboard-check'
+                },
+                {
+                    'id': 5,
+                    'type': 'announcement',
+                    'title': 'New Module Available',
+                    'message': 'A new module "Web Development with Flask" has been added to your course.',
+                    'course_name': 'Full Stack Development',
+                    'timestamp': '2024-01-11T11:00:00Z',
+                    'read': False,
+                    'priority': 'medium',
+                    'icon': 'fa-bullhorn'
+                }
+            ]
+        elif user_role == 'teacher':
+            # Teacher notifications
+            notifications_list = [
+                {
+                    'id': 1,
+                    'type': 'submission',
+                    'title': 'New Assignment Submission',
+                    'message': 'Student John Doe has submitted "Final Project" assignment.',
+                    'course_name': 'Computer Science Basics',
+                    'student_name': 'John Doe',
+                    'timestamp': '2024-01-15T11:30:00Z',
+                    'read': False,
+                    'priority': 'high',
+                    'icon': 'fa-file-upload'
+                },
+                {
+                    'id': 2,
+                    'type': 'enrollment',
+                    'title': 'New Student Enrollment',
+                    'message': '3 new students have enrolled in your course "Data Science Fundamentals".',
+                    'course_name': 'Data Science Fundamentals',
+                    'timestamp': '2024-01-14T15:20:00Z',
+                    'read': False,
+                    'priority': 'medium',
+                    'icon': 'fa-user-plus'
+                },
+                {
+                    'id': 3,
+                    'type': 'review',
+                    'title': 'Pending Reviews',
+                    'message': 'You have 5 assignments waiting for grading in "Machine Learning".',
+                    'course_name': 'Machine Learning',
+                    'timestamp': '2024-01-13T10:15:00Z',
+                    'read': True,
+                    'priority': 'high',
+                    'icon': 'fa-clipboard-list'
+                }
+            ]
+        else:  # admin
+            # Admin notifications
+            notifications_list = [
+                {
+                    'id': 1,
+                    'type': 'system',
+                    'title': 'System Maintenance',
+                    'message': 'Scheduled maintenance will occur tonight from 2:00 AM to 4:00 AM EST.',
+                    'timestamp': '2024-01-15T08:00:00Z',
+                    'read': False,
+                    'priority': 'high',
+                    'icon': 'fa-cog'
+                },
+                {
+                    'id': 2,
+                    'type': 'user',
+                    'title': 'New User Registration',
+                    'message': 'New instructor "Dr. Smith" has registered and is pending approval.',
+                    'timestamp': '2024-01-14T13:30:00Z',
+                    'read': False,
+                    'priority': 'medium',
+                    'icon': 'fa-user-check'
+                }
+            ]
+
+        # Calculate notification statistics
+        total_notifications = len(notifications_list)
+        unread_count = len([n for n in notifications_list if not n['read']])
+        high_priority_count = len([n for n in notifications_list if n['priority'] == 'high'])
+
+        return render_template('notifications.html',
+                             notifications=notifications_list,
+                             total_notifications=total_notifications,
+                             unread_count=unread_count,
+                             high_priority_count=high_priority_count,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/notifications/<int:notification_id>/read', methods=['POST'])
+@login_required
+def mark_notification_read(notification_id):
+    """Mark a specific notification as read"""
+    try:
+        # In a real app, this would update the database
+        # For now, we'll just return success
+        return jsonify({'success': True, 'message': 'Notification marked as read'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/notifications/mark-all-read', methods=['POST'])
+@login_required
+def mark_all_notifications_read():
+    """Mark all notifications as read"""
+    try:
+        # In a real app, this would update the database
+        # For now, we'll just return success
+        return jsonify({'success': True, 'message': 'All notifications marked as read'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+@app.route('/landing')
+def landing():
+    """Main landing page for the platform"""
+    return render_template('landing.html')
+
+
+@app.route('/about')
+def about():
+    """About us page"""
+    return render_template('about.html')
+
+
+@app.route('/contact')
+def contact():
+    """Contact page"""
+    return render_template('contact.html')
+
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000, host='0.0.0.0')
+    app.run(debug=True, port=5000)
+
+
+
+
