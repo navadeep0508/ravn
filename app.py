@@ -1697,8 +1697,9 @@ def admin_dashboard():
 
 
 @app.route('/teacher')
+@app.route('/teachers/dashboard')
 @teacher_required
-def teacher_dashboard():
+def teachers_dashboard():
     try:
         user_id = session.get('user_id')
 
@@ -1827,9 +1828,9 @@ def teacher_dashboard():
         return redirect(url_for('dashboard'))
 
 
-@app.route('/teacher/courses')
+@app.route('/teachers/courses')
 @teacher_required
-def teacher_courses():
+def teachers_courses():
     try:
         user_id = session.get('user_id')
         user_role = session.get('role')
@@ -1947,12 +1948,12 @@ def teacher_courses():
 
     except Exception as e:
         flash(f'An error occurred: {str(e)}', 'error')
-        return redirect(url_for('teacher_dashboard'))
+        return redirect(url_for('teachers_dashboard'))
 
 
-@app.route('/teacher/progress')
+@app.route('/teachers/progress')
 @teacher_required
-def teacher_progress():
+def teachers_progress():
     try:
         user_id = session.get('user_id')
         user_role = session.get('role')
@@ -2130,12 +2131,12 @@ def teacher_progress():
         flash(f'An error occurred: {str(e)}', 'error')
         import traceback
         traceback.print_exc()
-        return redirect(url_for('teacher_dashboard'))
+        return redirect(url_for('teachers_dashboard'))
 
 
-@app.route('/teacher/grading')
+@app.route('/teachers/grading')
 @teacher_required
-def teacher_grading():
+def teachers_grading():
     try:
         user_id = session.get('user_id')
         user_role = session.get('role')
@@ -2215,12 +2216,12 @@ def teacher_grading():
         flash(f'An error occurred: {str(e)}', 'error')
         import traceback
         traceback.print_exc()
-        return redirect(url_for('teacher_dashboard'))
+        return redirect(url_for('teachers_dashboard'))
 
 
-@app.route('/teacher/grade-submission/<submission_id>', methods=['GET', 'POST'])
+@app.route('/teachers/grade-submission/<submission_id>', methods=['GET', 'POST'])
 @teacher_required
-def teacher_grade_submission(submission_id):
+def teachers_grade_submission(submission_id):
     try:
         user_id = session.get('user_id')
         user_role = session.get('role')
@@ -2308,7 +2309,466 @@ def teacher_grade_submission(submission_id):
         flash(f'An error occurred: {str(e)}', 'error')
         import traceback
         traceback.print_exc()
-        return redirect(url_for('teacher_dashboard'))
+        return redirect(url_for('teachers_dashboard'))
+
+
+@app.route('/teachers/courses/<course_id>/modules/add', methods=['GET', 'POST'])
+@teacher_required
+def teachers_add_module(course_id):
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+
+        # Verify course exists and teacher owns it
+        course_result = supabase.table('courses').select('*').filter('id', 'eq', course_id).execute()
+        if not course_result.data:
+            flash('Course not found.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        course = course_result.data[0]
+
+        # Check if teacher owns this course
+        if user_role == 'teacher' and course['teacher_uuid'] != user_id:
+            flash('Access denied. You can only add modules to your own courses.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            order_index = request.form.get('order_index', 1)
+            estimated_time = request.form.get('estimated_time', '1 hour')
+
+            # Validate required fields
+            if not all([title, description]):
+                flash('Title and description are required.', 'error')
+                return render_template('teacher_add_module.html',
+                                     course=course,
+                                     username=session.get('username'))
+
+            try:
+                # Insert new module
+                result = supabase.table('modules').insert({
+                    'course_id': course_id,
+                    'title': title,
+                    'description': description,
+                    'order_index': int(order_index),
+                    'estimated_time': estimated_time
+                }).execute()
+
+                flash(f'Module "{title}" added successfully!', 'success')
+                return redirect(url_for('teacher_course_modules', course_id=course_id))
+
+            except Exception as e:
+                flash(f'Error creating module: {str(e)}', 'error')
+                return render_template('teacher_add_module.html',
+                                     course=course,
+                                     username=session.get('username'))
+
+        return render_template('teacher_add_module.html',
+                             course=course,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('teacher_courses'))
+
+
+@app.route('/teachers/modules/edit/<module_id>', methods=['GET', 'POST'])
+@teacher_required
+def teachers_edit_module(module_id):
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+
+        # Get module details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        module = module_result.data[0]
+
+        # Get course details to check ownership
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Check if teacher owns this course
+        if user_role == 'teacher' and course.get('teacher_uuid') != user_id:
+            flash('Access denied. You can only edit modules in your own courses.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            order_index = request.form.get('order_index', 1)
+            estimated_time = request.form.get('estimated_time', '1 hour')
+
+            # Validate required fields
+            if not all([title, description]):
+                flash('Title and description are required.', 'error')
+                return render_template('teacher_edit_module.html',
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+            try:
+                # Update module in Supabase
+                supabase.table('modules').update({
+                    'title': title,
+                    'description': description,
+                    'order_index': int(order_index),
+                    'estimated_time': estimated_time
+                }).eq('id', module_id).execute()
+
+                flash(f'Module "{title}" updated successfully!', 'success')
+                return redirect(url_for('teachers_course_modules', course_id=course['id']))
+
+            except Exception as e:
+                flash(f'Error updating module: {str(e)}', 'error')
+                return render_template('teacher_edit_module.html',
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+        return render_template('teacher_edit_module.html',
+                             module=module,
+                             course=course,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('teacher_courses'))
+
+
+@app.route('/teachers/modules/<module_id>/tasks')
+@teacher_required
+def teachers_module_tasks(module_id):
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+
+        # Get module details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        module = module_result.data[0]
+
+        # Get course details to check ownership
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Check if teacher owns this course
+        if user_role == 'teacher' and course.get('teacher_uuid') != user_id:
+            flash('Access denied. You can only view tasks in your own courses.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        # Get tasks for this module
+        tasks_result = supabase.table('tasks').select('*').eq('module_id', module_id).order('order_index').execute()
+        tasks = tasks_result.data if tasks_result.data else []
+
+        return render_template('teacher_module_tasks.html',
+                             module=module,
+                             course=course,
+                             tasks=tasks,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('teacher_courses'))
+
+
+@app.route('/teachers/tasks/edit/<task_id>', methods=['GET', 'POST'])
+@teacher_required
+def teachers_edit_task(task_id):
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+
+        # Get task details
+        task_result = supabase.table('tasks').select('*').filter('id', 'eq', task_id).execute()
+        if not task_result.data:
+            flash('Task not found.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        task = task_result.data[0]
+
+        # Get module and course details to check ownership
+        module_result = supabase.table('modules').select('*').eq('id', task['module_id']).execute()
+        module = module_result.data[0] if module_result.data else {}
+
+        course_result = supabase.table('courses').select('*').eq('id', module.get('course_id')).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Check if teacher owns this course
+        if user_role == 'teacher' and course.get('teacher_uuid') != user_id:
+            flash('Access denied. You can only edit tasks in your own courses.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        # Parse existing quiz questions if this is a quiz task
+        existing_questions = []
+        if task.get('type') == 'quiz' and task.get('quiz_data'):
+            try:
+                # Try to parse as new JSON format first
+                quiz_data = json.loads(task['quiz_data'])
+                if isinstance(quiz_data, dict) and 'version' in quiz_data:
+                    # New format
+                    existing_questions = quiz_data.get('questions', [])
+                else:
+                    # Fall back to old format
+                    existing_questions = parse_quiz_questions(task['quiz_data'])
+            except (json.JSONDecodeError, TypeError):
+                # Handle case where quiz_data is not valid JSON
+                existing_questions = parse_quiz_questions(task['quiz_data'])
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            task_type = request.form.get('type')
+            order_index = request.form.get('order_index', 1)
+            estimated_time = request.form.get('estimated_time', '30 minutes')
+            # Handle resource_link based on task type
+            form_resource_link = request.form.get('resource_link', '').strip()
+            current_resource_link = task.get('resource_link', '')
+
+            # If form has a resource_link value, use it; otherwise keep current value
+            if form_resource_link:
+                resource_link = form_resource_link
+            else:
+                resource_link = current_resource_link
+
+            is_mandatory = request.form.get('is_mandatory') == 'on'
+
+            # Handle assignment-specific settings
+            if task_type == 'assignment':
+                assignment_instructions = request.form.get('assignment_instructions', '')
+                due_date = request.form.get('due_date')
+                max_file_size = int(request.form.get('max_file_size', 10))
+                allow_late_submissions = request.form.get('allow_late_submissions') == 'on'
+
+                # Use assignment_instructions for task description
+                description = f'Assignment: {assignment_instructions[:100]}...' if assignment_instructions else 'Assignment submission required'
+
+            # Handle reading-specific settings
+            elif task_type == 'reading':
+                reading_instructions = request.form.get('reading_instructions', '')
+
+            # Handle discussion-specific settings
+            elif task_type == 'discussion':
+                discussion_prompt = request.form.get('discussion_prompt', '')
+                min_posts_required = int(request.form.get('min_posts_required', 1))
+                discussion_duration_days = request.form.get('discussion_duration_days', '7')
+                require_replies = request.form.get('require_replies') == 'on'
+
+            # Validate required fields
+            if not all([title, description, task_type]):
+                flash('Title, description, and type are required.', 'error')
+                return render_template('teacher_edit_task.html',
+                                     task=task,
+                                     module=module,
+                                     course=course,
+                                     existing_questions=existing_questions,
+                                     username=session.get('username'))
+
+            try:
+                # Prepare task data
+                update_data = {
+                    'title': title,
+                    'description': description,
+                    'type': task_type,
+                    'order_index': int(order_index),
+                    'estimated_time': estimated_time,
+                    'resource_link': resource_link,
+                    'is_mandatory': is_mandatory
+                }
+
+                # Add assignment-specific fields if this is an assignment
+                if task_type == 'assignment':
+                    update_data.update({
+                        'assignment_instructions': assignment_instructions,
+                        'due_date': due_date,
+                        'max_file_size': max_file_size,
+                        'allow_late_submissions': allow_late_submissions
+                    })
+
+                # Add reading-specific fields if this is a reading task
+                elif task_type == 'reading':
+                    update_data.update({
+                        'reading_instructions': reading_instructions
+                    })
+
+                # Add discussion-specific fields if this is a discussion task
+                elif task_type == 'discussion':
+                    update_data.update({
+                        'discussion_prompt': discussion_prompt,
+                        'min_posts_required': min_posts_required,
+                        'discussion_duration_days': discussion_duration_days,
+                        'require_replies': require_replies
+                    })
+
+                # Update task in Supabase
+                supabase.table('tasks').update(update_data).eq('id', task_id).execute()
+
+                flash(f'Task "{title}" updated successfully!', 'success')
+                return redirect(url_for('teacher_module_tasks', module_id=module['id']))
+
+            except Exception as e:
+                flash(f'Error updating task: {str(e)}', 'error')
+                return render_template('teacher_edit_task.html',
+                                     task=task,
+                                     module=module,
+                                     course=course,
+                                     existing_questions=existing_questions,
+                                     username=session.get('username'))
+
+        return render_template('teacher_edit_task.html',
+                             task=task,
+                             module=module,
+                             course=course,
+                             existing_questions=existing_questions,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('teacher_courses'))
+
+
+@app.route('/teachers/modules/<module_id>/tasks/add', methods=['GET', 'POST'])
+@teacher_required
+def teachers_add_task(module_id):
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        module = module_result.data[0]
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Check if teacher owns this course
+        if user_role == 'teacher' and course.get('teacher_uuid') != user_id:
+            flash('Access denied. You can only add tasks to your own courses.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            task_type = request.form.get('type')
+            order_index = request.form.get('order_index', 1)
+            estimated_time = request.form.get('estimated_time', '30 minutes')
+            resource_link = request.form.get('resource_link', '')
+            is_mandatory = request.form.get('is_mandatory') == 'on'
+
+            # Initialize task-specific variables with defaults
+            quiz_data = ''
+            passing_score = 70
+            max_attempts = 3
+            time_limit = 0
+            question_order = 'sequential'
+            quiz_instructions = ''
+            assignment_instructions = ''
+            due_date = None
+            max_file_size = 10
+            allow_late_submissions = False
+            reading_instructions = ''
+            discussion_prompt = ''
+            min_posts_required = 1
+            discussion_duration_days = 7
+            require_replies = False
+
+            # Handle assignment-specific settings
+            if task_type == 'assignment':
+                assignment_instructions = request.form.get('assignment_instructions', '')
+                due_date = request.form.get('due_date')
+                max_file_size = int(request.form.get('max_file_size', 10))
+                allow_late_submissions = request.form.get('allow_late_submissions') == 'on'
+
+                # Use assignment_instructions for task description
+                description = f'Assignment: {assignment_instructions[:100]}...' if assignment_instructions else 'Assignment submission required'
+
+            # Handle reading-specific settings
+            elif task_type == 'reading':
+                reading_instructions = request.form.get('reading_instructions', '')
+
+            # Handle discussion-specific settings
+            elif task_type == 'discussion':
+                discussion_prompt = request.form.get('discussion_prompt', '')
+                min_posts_required = int(request.form.get('min_posts_required', 1))
+                discussion_duration_days = request.form.get('discussion_duration_days', '7')
+                require_replies = request.form.get('require_replies') == 'on'
+
+            # Validate required fields
+            if not all([title, description, task_type]):
+                flash('Title, description, and type are required.', 'error')
+                return render_template('teacher_add_task.html',
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+            try:
+                # Prepare task data
+                task_data = {
+                    'module_id': module_id,
+                    'title': title,
+                    'description': description,
+                    'type': task_type,
+                    'order_index': int(order_index),
+                    'estimated_time': estimated_time,
+                    'resource_link': resource_link,
+                    'is_mandatory': is_mandatory
+                }
+
+                # Add assignment-specific fields if this is an assignment
+                if task_type == 'assignment':
+                    task_data.update({
+                        'assignment_instructions': assignment_instructions,
+                        'due_date': due_date,
+                        'max_file_size': max_file_size,
+                        'allow_late_submissions': allow_late_submissions
+                    })
+
+                # Add reading-specific fields if this is a reading task
+                elif task_type == 'reading':
+                    task_data.update({
+                        'reading_instructions': reading_instructions
+                    })
+
+                # Add discussion-specific fields if this is a discussion task
+                elif task_type == 'discussion':
+                    task_data.update({
+                        'discussion_prompt': discussion_prompt,
+                        'min_posts_required': min_posts_required,
+                        'discussion_duration_days': discussion_duration_days,
+                        'require_replies': require_replies
+                    })
+
+                # Insert new task
+                supabase.table('tasks').insert(task_data).execute()
+
+                flash(f'Task "{title}" added successfully!', 'success')
+                return redirect(url_for('teacher_module_tasks', module_id=module_id))
+
+            except Exception as e:
+                flash(f'Error creating task: {str(e)}', 'error')
+                return render_template('teacher_add_task.html',
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+        return render_template('teacher_add_task.html',
+                             module=module,
+                             course=course,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('teacher_courses'))
 
 
 @app.route('/admin/users')
@@ -2566,7 +3026,7 @@ def admin_add_course():
             flash(f'Course "{title}" added successfully!', 'success')
             user_role = session.get('role', 'admin')
             if user_role == 'teacher':
-                return redirect(url_for('teacher_dashboard'))
+                return redirect(url_for('teachers_dashboard'))
             else:
                 return redirect(url_for('admin_courses'))
 
@@ -2574,7 +3034,7 @@ def admin_add_course():
             flash(f'Error creating course: {str(e)}', 'error')
             user_role = session.get('role', 'admin')
             if user_role == 'teacher':
-                return redirect(url_for('teacher_dashboard'))
+                return redirect(url_for('teachers_dashboard'))
             else:
                 return redirect(url_for('admin_courses'))
 
@@ -2594,7 +3054,7 @@ def admin_edit_course(course_id):
         if not course_result.data:
             flash('Course not found.', 'error')
             if user_role == 'teacher':
-                return redirect(url_for('teacher_dashboard'))
+                return redirect(url_for('teachers_dashboard'))
             else:
                 return redirect(url_for('admin_courses'))
 
@@ -2603,7 +3063,7 @@ def admin_edit_course(course_id):
         # Check if teacher owns this course
         if user_role == 'teacher' and course['teacher_uuid'] != user_id:
             flash('Access denied. You can only edit your own courses.', 'error')
-            return redirect(url_for('teacher_dashboard'))
+            return redirect(url_for('teachers_dashboard'))
 
         if request.method == 'POST':
             title = request.form.get('title')
@@ -2635,7 +3095,7 @@ def admin_edit_course(course_id):
 
                 flash(f'Course "{title}" updated successfully!', 'success')
                 if user_role == 'teacher':
-                    return redirect(url_for('teacher_dashboard'))
+                    return redirect(url_for('teachers_dashboard'))
                 else:
                     return redirect(url_for('admin_courses'))
 
@@ -2652,14 +3112,14 @@ def admin_edit_course(course_id):
     except Exception as e:
         flash(f'An error occurred: {str(e)}', 'error')
         if user_role == 'teacher':
-            return redirect(url_for('teacher_dashboard'))
+            return redirect(url_for('teachers_dashboard'))
         else:
             return redirect(url_for('admin_courses'))
 
 
-@app.route('/admin/courses/<course_id>/modules')
+@app.route('/teachers/courses/<course_id>/modules')
 @teacher_required
-def admin_course_modules(course_id):
+def teachers_course_modules(course_id):
     try:
         user_id = session.get('user_id')
         user_role = session.get('role')
@@ -2669,7 +3129,7 @@ def admin_course_modules(course_id):
         if not course_result.data:
             flash('Course not found.', 'error')
             if user_role == 'teacher':
-                return redirect(url_for('teacher_dashboard'))
+                return redirect(url_for('teachers_dashboard'))
             else:
                 return redirect(url_for('admin_courses'))
 
@@ -2678,7 +3138,7 @@ def admin_course_modules(course_id):
         # Check if teacher owns this course
         if user_role == 'teacher' and course['teacher_uuid'] != user_id:
             flash('Access denied. You can only view modules for your own courses.', 'error')
-            return redirect(url_for('teacher_dashboard'))
+            return redirect(url_for('teachers_dashboard'))
 
         # Get modules for this course
         modules_result = supabase.table('modules').select('*').eq('course_id', course_id).order('order_index').execute()
@@ -2693,7 +3153,7 @@ def admin_course_modules(course_id):
         flash(f'An error occurred: {str(e)}', 'error')
         user_role = session.get('role')
         if user_role == 'teacher':
-            return redirect(url_for('teacher_dashboard'))
+            return redirect(url_for('teachers_dashboard'))
         else:
             return redirect(url_for('admin_courses'))
 
@@ -2747,7 +3207,7 @@ def admin_add_module(course_id):
                 supabase.rpc('enable_rls_for_admin', params={}).execute()
 
                 flash(f'Module "{title}" added successfully!', 'success')
-                return redirect(url_for('admin_course_modules', course_id=course_id))
+                return redirect(url_for('teachers_course_modules', course_id=course_id))
 
             except Exception as e:
                 # Make sure to re-enable RLS if there's an error
@@ -2810,7 +3270,7 @@ def admin_edit_module(module_id):
                 }).eq('id', module_id).execute()
 
                 flash(f'Module "{title}" updated successfully!', 'success')
-                return redirect(url_for('admin_course_modules', course_id=course['id']))
+                return redirect(url_for('teachers_course_modules', course_id=course['id']))
 
             except Exception as e:
                 flash(f'Error updating module: {str(e)}', 'error')
@@ -3151,7 +3611,7 @@ def admin_add_task(module_id):
                 supabase.rpc('enable_rls_for_admin', params={}).execute()
 
                 flash(f'Test "{title}" added successfully!', 'success')
-                return redirect(url_for('admin_module_tests', module_id=module_id))
+                return redirect(url_for('teachers_module_tasks', module_id=module_id))
 
             except Exception as e:
                 # Make sure to re-enable RLS if there's an error
@@ -4062,7 +4522,7 @@ def admin_add_test(module_id):
                 supabase.rpc('enable_rls_for_admin', params={}).execute()
 
                 flash(f'Test "{title}" added successfully!', 'success')
-                return redirect(url_for('admin_module_tests', module_id=module_id))
+                return redirect(url_for('teachers_module_tasks', module_id=module_id))
 
             except Exception as e:
                 # Make sure to re-enable RLS if there's an error
@@ -4186,7 +4646,7 @@ def admin_edit_test(test_id):
                 supabase.rpc('enable_rls_for_admin', params={}).execute()
 
                 flash(f'Test "{title}" updated successfully!', 'success')
-                return redirect(url_for('admin_module_tests', module_id=module['id']))
+                return redirect(url_for('teachers_module_tasks', module_id=module['id']))
 
             except Exception as e:
                 # Make sure to re-enable RLS if there's an error

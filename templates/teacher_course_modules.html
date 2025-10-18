@@ -11,10 +11,10 @@
             <p class="text-gray-600">Manage course modules and structure</p>
         </div>
         <div class="flex space-x-3">
-            <a href="{{ url_for('admin_courses') }}" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+            <a href="{{ url_for('teachers_courses') }}" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
                 <i class="fas fa-arrow-left mr-2"></i>Back to My Courses
             </a>
-            <a href="{{ url_for('admin_add_module', course_id=course.id) }}" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+            <a href="{{ url_for('teachers_add_module', course_id=course.id) }}" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                 <i class="fas fa-plus mr-2"></i>Add Module
             </a>
         </div>
@@ -72,13 +72,13 @@
                     </div>
                     <div class="flex space-x-2 ml-4">
                         <div class="flex space-x-4">
-                            <a href="{{ url_for('admin_module_tasks', module_id=module.id) }}" class="flex items-center text-blue-600 hover:text-blue-800">
+                            <a href="{{ url_for('teachers_module_tasks', module_id=module.id) }}" class="flex items-center text-blue-600 hover:text-blue-800">
                                 <i class="fas fa-tasks mr-1"></i> Tasks
                                 <span class="ml-1 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
                                     {{ module.task_count or 0 }}
                                 </span>
                             </a>
-                            <a href="{{ url_for('admin_module_tests', module_id=module.id) }}" class="flex items-center text-green-600 hover:text-green-800">
+                            <a href="{{ url_for('teachers_module_tasks', module_id=module.id) }}" class="flex items-center text-green-600 hover:text-green-800">
                                 <i class="fas fa-question-circle mr-1"></i> Tests
                                 <span class="ml-1 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
                                     {{ module.test_count or 0 }}
@@ -95,7 +95,7 @@
             <i class="fas fa-list text-4xl text-gray-400 mb-4"></i>
             <h3 class="text-lg font-medium text-gray-900 mb-2">No modules found</h3>
             <p class="text-gray-500 mb-4">Start building your course by adding the first module.</p>
-            <a href="{{ url_for('admin_add_module', course_id=course.id) }}"
+            <a href="{{ url_for('teachers_add_module', course_id=course.id) }}"
                class="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                 <i class="fas fa-plus mr-2"></i>Add First Module
             </a>
