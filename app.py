@@ -3249,7 +3249,7 @@ def admin_add_module(course_id):
             # Validate required fields
             if not all([title, description]):
                 flash('Title and description are required.', 'error')
-                return render_template('teacher_add_module.html' if user_role == 'teacher' else 'admin_add_module.html',
+                return render_template('admin_add_module.html',
                                      course=course,
                                      modules=modules,
                                      username=session.get('username'))
@@ -3284,7 +3284,7 @@ def admin_add_module(course_id):
                                      course=course,
                                      username=session.get('username'))
 
-        return render_template('teacher_add_module.html' if user_role == 'teacher' else 'admin_add_module.html',
+        return render_template('admin_add_module.html',
                              course=course,
                              modules=modules,
                              username=session.get('username'))
@@ -3319,7 +3319,7 @@ def admin_edit_module(module_id):
             # Validate required fields
             if not all([title, description]):
                 flash('Title and description are required.', 'error')
-                return render_template('teacher_edit_module.html' if user_role == 'teacher' else 'admin_edit_module.html',
+                return render_template('admin_edit_module.html',
                                      module=module,
                                      course=course,
                                      username=session.get('username'))
@@ -3338,12 +3338,12 @@ def admin_edit_module(module_id):
 
             except Exception as e:
                 flash(f'Error updating module: {str(e)}', 'error')
-                return render_template('teacher_edit_module.html' if user_role == 'teacher' else 'admin_edit_module.html',
+                return render_template('admin_edit_module.html',
                                      module=module,
                                      course=course,
                                      username=session.get('username'))
 
-        return render_template('teacher_edit_module.html' if user_role == 'teacher' else 'admin_edit_module.html',
+        return render_template('admin_edit_module.html',
                              module=module,
                              course=course,
                              username=session.get('username'))

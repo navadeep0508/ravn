@@ -19,10 +19,7 @@
                 <i class="fas fa-user mr-3 text-gray-500"></i>
                 <span>Profile</span>
             </a>
-            <a href="#" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100 {% if request.endpoint == 'schedule' %} bg-gray-200 {% endif %}">
-                <i class="fas fa-calendar-alt mr-3 text-gray-500"></i>
-                <span>Schedule</span>
-            </a>
+            
             <a href="{{ url_for('courses') }}" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100 {% if request.endpoint == 'courses' %} bg-gray-200 {% endif %}">
                 <i class="fas fa-book-open mr-3 text-gray-500"></i>
                 <span>Courses</span>
@@ -39,10 +36,7 @@
                 <i class="fas fa-comment-dots mr-3 text-gray-500"></i>
                 <span>Messages</span>
             </a>
-            <a href="#" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100 {% if request.endpoint == 'settings' %} bg-gray-200 {% endif %}">
-                <i class="fas fa-cog mr-3 text-gray-500"></i>
-                <span>Settings</span>
-            </a>
+            
 
             <!-- Role-based Panel Section (only for teachers and admins) -->
             {% if session.get('role') in ['teacher', 'admin'] %}
