@@ -1,0 +1,320 @@
+{% extends "teacher_base.html" %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block teacher_content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Welcome Header with Animation -->
+    <div class="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-xl shadow-2xl p-8 mb-8 text-white relative overflow-hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-10"></div>
+        <div class="relative z-10">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                        <i class="fas fa-chalkboard-teacher text-2xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-bold mb-2">Welcome back, {{ username }}! 👨‍🏫</h1>
+                        <p class="text-indigo-100 text-lg">Here's an overview of your courses and student activity.</p>
+                    </div>
+                </div>
+                <div class="hidden md:block">
+                    <div class="text-right">
+                        <div class="text-4xl font-bold mb-1">{{ teacher_courses|length }}</div>
+                        <div class="text-indigo-200">My Courses</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Decorative elements -->
+        <div class="absolute -top-4 -right-4 w-24 h-24 bg-white bg-opacity-10 rounded-full"></div>
+        <div class="absolute -bottom-6 -left-6 w-32 h-32 bg-white bg-opacity-5 rounded-full"></div>
+    </div>
+
+    <!-- Statistics Cards with Enhanced Design -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-green-500">
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-green-100 text-green-600 mr-4">
+                            <i class="fas fa-users text-2xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Total Students</p>
+                            <p class="text-3xl font-bold text-gray-900">{{ total_students }}</p>
+                        </div>
+                    </div>
+                    <div class="text-green-500">
+                        <i class="fas fa-arrow-up text-sm"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-blue-500">
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-blue-100 text-blue-600 mr-4">
+                            <i class="fas fa-book text-2xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Total Modules</p>
+                            <p class="text-3xl font-bold text-gray-900">{{ total_modules }}</p>
+                        </div>
+                    </div>
+                    <div class="text-blue-500">
+                        <i class="fas fa-arrow-up text-sm"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-purple-500">
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-purple-100 text-purple-600 mr-4">
+                            <i class="fas fa-graduation-cap text-2xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Active Courses</p>
+                            <p class="text-3xl font-bold text-gray-900">{{ teacher_courses|selectattr('status', 'equalto', 'active')|list|length }}</p>
+                        </div>
+                    </div>
+                    <div class="text-purple-500">
+                        <i class="fas fa-arrow-up text-sm"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-orange-500">
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-orange-100 text-orange-600 mr-4">
+                            <i class="fas fa-chart-line text-2xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Avg Progress</p>
+                            <p class="text-3xl font-bold text-gray-900">{{ (course_stats|map(attribute='avg_progress')|list|sum / course_stats|length) if course_stats else 0 }}%</p>
+                        </div>
+                    </div>
+                    <div class="text-orange-500">
+                        <i class="fas fa-arrow-up text-sm"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- My Courses with Enhanced Design -->
+        <div class="lg:col-span-2">
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xl font-semibold text-gray-800 flex items-center">
+                            <i class="fas fa-graduation-cap text-indigo-600 mr-3"></i>
+                            My Courses
+                        </h3>
+                        <span class="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                            {{ teacher_courses|length }} courses
+                        </span>
+                    </div>
+                </div>
+                <div class="divide-y divide-gray-100">
+                    {% for course in teacher_courses %}
+                    <div class="p-6 hover:bg-gray-50 transition-colors duration-200 group">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-4">
+                                <div class="relative">
+                                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-book text-white text-xl"></i>
+                                    </div>
+                                    <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-{{ 'green' if course.status == 'active' else 'red' }}-400 border-2 border-white rounded-full"></div>
+                                </div>
+                                <div class="flex-1">
+                                    <h4 class="text-sm font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">{{ course.title }}</h4>
+                                    <p class="text-sm text-gray-500">{{ course.description[:80] }}{% if course.description|length > 80 %}...{% endif %}</p>
+                                    <div class="flex items-center mt-2 space-x-4">
+                                        <span class="text-xs text-gray-400 flex items-center">
+                                            <i class="fas fa-users mr-1"></i>
+                                            {{ course_stats|selectattr('id', 'equalto', course.id)|map(attribute='enrollments')|first|default(0) }} students
+                                        </span>
+                                        <span class="text-xs text-gray-400 flex items-center">
+                                            <i class="fas fa-book mr-1"></i>
+                                            {{ course_stats|selectattr('id', 'equalto', course.id)|map(attribute='modules')|first|default(0) }} modules
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="px-3 py-1 bg-{{ 'green' if course.status == 'active' else 'red' }}-100 text-{{ 'green' if course.status == 'active' else 'red' }}-800 text-xs font-medium rounded-full capitalize">
+                                    {{ course.status }}
+                                </span>
+                                <a href="{{ url_for('teachers_course_modules', course_id=course.id) }}" class="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-gray-400 hover:text-indigo-600">
+                                    <i class="fas fa-arrow-right"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% if not teacher_courses %}
+                    <div class="p-8 text-center">
+                        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-graduation-cap text-gray-400 text-xl"></i>
+                        </div>
+                        <h4 class="text-lg font-medium text-gray-900 mb-2">No courses yet</h4>
+                        <p class="text-gray-500 mb-4">Create your first course to get started with teaching!</p>
+                        <a href="{{ url_for('admin_add_course') }}" class="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-lg hover:bg-indigo-700 transition-colors">
+                            <i class="fas fa-plus mr-2"></i>Create Course
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions and Recent Activity -->
+        <div class="space-y-6">
+            <!-- Quick Actions -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+                    <i class="fas fa-bolt text-yellow-500 mr-3"></i>
+                    Quick Actions
+                </h3>
+                <div class="space-y-3">
+                    <a href="{{ url_for('admin_courses') }}" class="group flex items-center p-4 bg-gradient-to-r from-indigo-50 to-indigo-100 rounded-lg hover:from-indigo-100 hover:to-indigo-200 transition-all duration-200 border border-indigo-200">
+                        <div class="p-3 bg-indigo-600 rounded-lg mr-4 group-hover:bg-indigo-700 transition-colors">
+                            <i class="fas fa-graduation-cap text-white text-lg"></i>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-semibold text-indigo-800 group-hover:text-indigo-900">Manage Courses</p>
+                            <p class="text-xs text-indigo-600">Create and edit your courses</p>
+                        </div>
+                        <i class="fas fa-arrow-right text-indigo-400 group-hover:text-indigo-600 transition-colors"></i>
+                    </a>
+
+                    <a href="{{ url_for('admin_progress') }}" class="group flex items-center p-4 bg-gradient-to-r from-teal-50 to-teal-100 rounded-lg hover:from-teal-100 hover:to-teal-200 transition-all duration-200 border border-teal-200">
+                        <div class="p-3 bg-teal-600 rounded-lg mr-4 group-hover:bg-teal-700 transition-colors">
+                            <i class="fas fa-chart-line text-white text-lg"></i>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-semibold text-teal-800 group-hover:text-teal-900">Student Progress</p>
+                            <p class="text-xs text-teal-600">Track learning progress</p>
+                        </div>
+                        <i class="fas fa-arrow-right text-teal-400 group-hover:text-teal-600 transition-colors"></i>
+                    </a>
+
+                    <a href="{{ url_for('admin_progress') }}" class="group flex items-center p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg hover:from-blue-100 hover:to-blue-200 transition-all duration-200 border border-blue-200">
+                        <div class="p-3 bg-blue-600 rounded-lg mr-4 group-hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-edit text-white text-lg"></i>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-semibold text-blue-800 group-hover:text-blue-900">Grade Assignments</p>
+                            <p class="text-xs text-blue-600">Review student submissions</p>
+                        </div>
+                        <i class="fas fa-arrow-right text-blue-400 group-hover:text-blue-600 transition-colors"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+                    <i class="fas fa-clock text-blue-500 mr-3"></i>
+                    Recent Activity
+                </h3>
+                {% if recent_activity %}
+                    <div class="space-y-4">
+                        {% for activity in recent_activity %}
+                        <div class="flex items-start p-3 bg-gray-50 rounded-lg">
+                            <div class="w-8 h-8 bg-{{ activity.color }}-100 rounded-full flex-shrink-0 flex items-center justify-center mr-3 mt-1">
+                                <i class="fas fa-{{ activity.icon }} text-{{ activity.color }}-500"></i>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-sm font-semibold text-gray-900">{{ activity.message }}</p>
+                                <p class="text-xs text-gray-500 mt-1">{{ activity.time_ago }}</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-6">
+                        <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <i class="fas fa-bell-slash text-gray-400"></i>
+                        </div>
+                        <p class="text-gray-500 text-sm">No recent activity</p>
+                        <p class="text-xs text-gray-400 mt-1">Activity will appear here when students interact with your courses!</p>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Course Performance -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+                    <i class="fas fa-chart-bar text-green-500 mr-3"></i>
+                    Course Performance
+                </h3>
+                {% if course_stats %}
+                    <div class="space-y-4">
+                        {% for stat in course_stats %}
+                        <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
+                            <div class="flex-1">
+                                <h4 class="font-semibold text-gray-800 text-sm">{{ stat.title }}</h4>
+                                <p class="text-xs text-gray-500">{{ stat.enrollments }} students • {{ stat.modules }} modules</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold text-indigo-600">{{ stat.avg_progress }}%</div>
+                                <div class="w-20 bg-gray-200 rounded-full h-2 mt-1">
+                                    <div class="bg-indigo-600 h-2 rounded-full" style="width: {{ stat.avg_progress }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-6">
+                        <p class="text-gray-500 text-sm">No course statistics available yet.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Additional custom styles for enhanced UX */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.6s ease-out;
+}
+
+/* Smooth hover transitions */
+.hover\:scale-105:hover {
+    transform: scale(1.05);
+}
+
+/* Better focus states for accessibility */
+.focus\:ring-4:focus {
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+</style>
+
+<script>
+// Add smooth animations on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const cards = document.querySelectorAll('.bg-white.rounded-xl');
+    cards.forEach((card, index) => {
+        setTimeout(() => {
+            card.classList.add('animate-fade-in');
+        }, index * 100);
+    });
+});
+</script>
+{% endblock %}

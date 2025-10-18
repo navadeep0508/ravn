@@ -1,14 +1,14 @@
-{% extends "admin_base.html" %}
+{% extends "teacher_base.html" %}
 
-{% block page_title %}Edit Module - {{ module.title }}{% endblock %}
+{% block page_title %}Add Module - {{ course.title }}{% endblock %}
 
-{% block admin_content %}
+{% block teacher_content %}
 <div class="max-w-3xl mx-auto">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
         <div>
-            <h1 class="text-2xl font-bold text-gray-800">Edit Module</h1>
-            <p class="text-gray-600">Update module information for "{{ module.title }}"</p>
+            <h1 class="text-2xl font-bold text-gray-800">Add Module</h1>
+            <p class="text-gray-600">Create a new module for "{{ course.title }}"</p>
         </div>
         <a href="{{ url_for('teachers_course_modules', course_id=course.id) }}"
            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
@@ -19,23 +19,23 @@
     <!-- Course Info -->
     <div class="bg-white rounded-lg shadow-md p-4 mb-6">
         <div class="flex items-center">
-            <div class="w-16 h-16 bg-gradient-to-br from-purple-400 to-purple-600 rounded-lg flex items-center justify-center mr-4">
-                <i class="fas fa-book text-white text-xl"></i>
+            <div class="w-16 h-16 bg-gradient-to-br from-{{ course.category | lower }}-400 to-{{ course.category | lower }}-600 rounded-lg flex items-center justify-center mr-4">
+                <i class="fas fa-graduation-cap text-white text-xl"></i>
             </div>
             <div>
-                <h3 class="font-semibold text-gray-800">{{ module.title }}</h3>
-                <p class="text-sm text-gray-600">{{ course.title }} • Module {{ module.order_index }}</p>
+                <h3 class="font-semibold text-gray-800">{{ course.title }}</h3>
+                <p class="text-sm text-gray-600">{{ course.category }} • {{ course.level }} • {{ course.duration }}</p>
             </div>
         </div>
     </div>
 
-    <!-- Edit Module Form -->
+    <!-- Add Module Form -->
     <div class="bg-white rounded-lg shadow-md overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200">
             <h3 class="text-lg font-semibold text-gray-800">Module Information</h3>
         </div>
 
-        <form method="POST" action="{{ url_for('admin_edit_module', module_id=module.id) }}" class="p-6 space-y-6">
+        <form method="POST" action="{{ url_for('teacher_add_module', course_id=course.id) }}" class="p-6 space-y-6">
             <!-- Module Title -->
             <div>
                 <label for="title" class="block text-sm font-medium text-gray-700 mb-2">
@@ -45,7 +45,6 @@
                     type="text"
                     id="title"
                     name="title"
-                    value="{{ module.title }}"
                     required
                     class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
                     placeholder="e.g., Week 1: Introduction to Python"
@@ -64,7 +63,7 @@
                     rows="4"
                     class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
                     placeholder="Describe what students will learn in this module..."
-                >{{ module.description }}</textarea>
+                ></textarea>
             </div>
 
             <!-- Order and Time -->
@@ -78,8 +77,7 @@
                         id="order_index"
                         name="order_index"
                         min="1"
-                        value="{{ module.order_index }}"
-                        required
+                        value="{{ (modules | max(attribute='order_index') | default(0)) + 1 }}"
                         class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
                     >
                     <p class="text-xs text-gray-500 mt-1">Module position in course sequence</p>
@@ -93,10 +91,28 @@
                         type="text"
                         id="estimated_time"
                         name="estimated_time"
-                        value="{{ module.estimated_time }}"
+                        value="2 hours"
                         class="input-focus w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
-                        placeholder="e.g., 3 hours, 1 week"
+                        placeholder="e.g., 2 hours, 45 minutes"
                     >
+                </div>
+            </div>
+
+            <!-- Module Preview -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h4 class="text-sm font-medium text-gray-700 mb-3">Module Preview</h4>
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center mb-2">
+                        <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full mr-2">
+                            Module 1
+                        </span>
+                        <h5 class="font-medium text-gray-800">New Module Title</h5>
+                    </div>
+                    <p class="text-sm text-gray-600">Module description will appear here...</p>
+                    <div class="flex items-center text-xs text-gray-500 mt-2">
+                        <i class="fas fa-clock mr-1"></i>
+                        <span>2 hours</span>
+                    </div>
                 </div>
             </div>
 
@@ -104,9 +120,9 @@
             <div class="flex flex-col sm:flex-row gap-3 pt-4">
                 <button
                     type="submit"
-                    class="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-purple-500 to-blue-600 text-white font-semibold rounded-lg shadow-lg hover:opacity-90 transition-opacity"
+                    class="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-green-500 to-blue-600 text-white font-semibold rounded-lg shadow-lg hover:opacity-90 transition-opacity"
                 >
-                    <i class="fas fa-save mr-2"></i>Update Module
+                    <i class="fas fa-plus mr-2"></i>Create Module
                 </button>
                 <a href="{{ url_for('teachers_course_modules', course_id=course.id) }}"
                    class="flex-1 sm:flex-none px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors text-center">

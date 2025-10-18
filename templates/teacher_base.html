@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen bg-gray-100">
+    <!-- Teacher Sidebar -->
+    <div class="w-64 bg-white shadow-lg">
+        <div class="p-4 border-b border-gray-200">
+            <h1 class="text-xl font-bold text-gray-800">Teacher Panel</h1>
+            <p class="text-sm text-gray-600">Course Management</p>
+        </div>
+        <nav class="mt-6">
+            <div class="px-4 py-2">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Teaching</p>
+            </div>
+            <a href="{{ url_for('teachers_dashboard') }}" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100 {% if request.endpoint == 'teachers_dashboard' %}bg-blue-50 text-blue-700{% endif %}">
+                <i class="fas fa-tachometer-alt mr-3"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="{{ url_for('teachers_courses') }}" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100 {% if request.endpoint == 'teachers_courses' %}bg-blue-50 text-blue-700{% endif %}">
+                <i class="fas fa-graduation-cap mr-3"></i>
+                <span>My Courses</span>
+            </a>
+            <a href="{{ url_for('teachers_progress') }}" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100 {% if request.endpoint == 'teachers_progress' %}bg-blue-50 text-blue-700{% endif %}">
+                <i class="fas fa-chart-line mr-3"></i>
+                <span>Student Progress</span>
+            </a>
+            <a href="{{ url_for('teachers_grading') }}" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100 {% if request.endpoint == 'teachers_grading' %}bg-blue-50 text-blue-700{% endif %}">
+                <i class="fas fa-edit mr-3"></i>
+                <span>Grade Assignments</span>
+            </a>
+        </nav>
+        <div class="absolute bottom-0 w-64 p-4 border-t border-gray-200">
+            <div class="flex items-center mb-3">
+                <img src="https://ui-avatars.com/api/?name={{ session.get('username', 'T') }}&background=10b981&color=fff&size=32"
+                     alt="Teacher"
+                     class="w-8 h-8 rounded-full mr-3">
+                <div>
+                    <p class="text-sm font-medium text-gray-800">{{ session.get('username', 'Teacher') }}</p>
+                    <p class="text-xs text-gray-500">Teacher</p>
+                </div>
+            </div>
+            <a href="{{ url_for('dashboard') }}" class="flex items-center text-gray-700 hover:text-gray-900 mb-2">
+                <i class="fas fa-arrow-left mr-3"></i>
+                <span>Back to Dashboard</span>
+            </a>
+            <a href="{{ url_for('logout') }}" class="flex items-center text-red-600 hover:text-red-700">
+                <i class="fas fa-sign-out-alt mr-3"></i>
+                <span>Logout</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Teacher Main Content -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <!-- Top Navigation -->
+        <header class="bg-white shadow-sm">
+            <div class="flex items-center justify-between px-6 py-4">
+                <div class="flex items-center">
+                    <h2 class="text-xl font-semibold text-gray-800">{% block page_title %}Teacher Dashboard{% endblock %}</h2>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="relative">
+                        <i class="fas fa-bell text-gray-500 text-xl cursor-pointer"></i>
+                        <span class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">2</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Teacher Page Content -->
+        <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
+            {% block teacher_content %}{% endblock %}
+        </main>
+    </div>
+</div>
+{% endblock %}
