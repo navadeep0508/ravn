@@ -3,9 +3,9 @@
 {% block content %}
 <div class="flex h-screen bg-gray-100">
     <!-- Sidebar -->
-    <div class="w-64 bg-white soft-shadow">
+    <div class="w-64 bg-white shadow-lg">
         <div class="p-4 border-b border-gray-200">
-            <h1 class="text-2xl font-bold text-gray-800 font-logo">RAVN</h1>
+            <h1 class="text-xl font-bold text-gray-800">RAVN</h1>
         </div>
         <nav class="mt-6">
             <div class="px-4 py-2">
@@ -19,10 +19,7 @@
                 <i class="fas fa-user mr-3 text-gray-500"></i>
                 <span>Profile</span>
             </a>
-            <a href="#" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100">
-                <i class="fas fa-calendar-alt mr-3 text-gray-500"></i>
-                <span>Schedule</span>
-            </a>
+            
             <a href="{{ url_for('courses') }}" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100">
                 <i class="fas fa-book-open mr-3 text-gray-500"></i>
                 <span>Courses</span>
@@ -39,10 +36,7 @@
                 <i class="fas fa-comment-dots mr-3 text-gray-500"></i>
                 <span>Messages</span>
             </a>
-            <a href="#" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100">
-                <i class="fas fa-cog mr-3 text-gray-500"></i>
-                <span>Settings</span>
-            </a>
+            
 
             <!-- Role-based Panel Section (only for teachers and admins) -->
             {% if session.get('role') in ['teacher', 'admin'] %}
@@ -83,7 +77,7 @@
     <!-- Main Content -->
     <div class="flex-1 flex flex-col overflow-hidden">
         <!-- Top Navigation -->
-        <header class="bg-white soft-shadow">
+        <header class="bg-white shadow-sm">
             <div class="flex items-center justify-between px-6 py-4">
                 <div class="flex items-center">
                     <h2 class="text-xl font-semibold text-gray-800">{% block page_title %}Dashboard{% endblock %}</h2>
