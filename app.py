@@ -3025,9 +3025,12 @@ def admin_courses():
         if user_role == 'teacher':
             total_own_students = total_students
             total_own_modules = 0
+            # Only query modules for real courses (not sample data)
             for course in courses:
-                modules_result = supabase.table('modules').select('id').eq('course_id', course['id']).execute()
-                total_own_modules += len(modules_result.data) if modules_result.data else 0
+                # Skip sample data courses that don't have valid UUIDs
+                if not course['id'].startswith('sample'):
+                    modules_result = supabase.table('modules').select('id').eq('course_id', course['id']).execute()
+                    total_own_modules += len(modules_result.data) if modules_result.data else 0
 
         return render_template('teacher_courses.html' if user_role == 'teacher' else 'admin_courses.html',
                              courses=formatted_courses,
@@ -3357,6 +3360,7 @@ def admin_edit_module(module_id):
 @admin_required
 def admin_module_tasks(module_id):
     try:
+        user_role = session.get('role')
         # Get module details
         module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
         if not module_result.data:
@@ -3502,6 +3506,8 @@ def teachers_add_test(module_id):
         return redirect(url_for('teachers_courses'))
 
 
+@app.route('/admin/tasks/edit/<task_id>', methods=['GET', 'POST'])
+@admin_required
 def admin_edit_task(task_id):
     try:
         # Get task details
