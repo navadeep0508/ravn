@@ -3383,9 +3383,125 @@ def admin_module_tasks(module_id):
         flash(f'An error occurred: {str(e)}', 'error')
         return redirect(url_for('admin_courses'))
 
+@app.route('/teachers/modules/<module_id>/tests')
+@teacher_required
+def teachers_module_tests(module_id):
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
 
-@app.route('/admin/tasks/edit/<task_id>', methods=['GET', 'POST'])
-@admin_required
+        # Get module details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        module = module_result.data[0]
+
+        # Get course details
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Check if teacher owns this course
+        if user_role == 'teacher' and course.get('teacher_uuid') != user_id:
+            flash('Access denied. You can only view tests for your own courses.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        # Get tests for this module
+        tests_result = supabase.table('tests').select('*').eq('module_id', module_id).order('order_index').execute()
+        tests = tests_result.data if tests_result.data else []
+
+        return render_template('teacher_module_tests.html' if user_role == 'teacher' else 'admin_module_tests.html',
+                             module=module,
+                             course=course,
+                             tests=tests,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('teachers_courses'))
+
+@app.route('/teachers/modules/<module_id>/tests/add', methods=['GET', 'POST'])
+@teacher_required
+def teachers_add_test(module_id):
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+
+        # Get module and course details
+        module_result = supabase.table('modules').select('*').eq('id', module_id).execute()
+        if not module_result.data:
+            flash('Module not found.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        module = module_result.data[0]
+        course_result = supabase.table('courses').select('*').eq('id', module['course_id']).execute()
+        course = course_result.data[0] if course_result.data else {}
+
+        # Check if teacher owns this course
+        if user_role == 'teacher' and course.get('teacher_uuid') != user_id:
+            flash('Access denied. You can only add tests to your own courses.', 'error')
+            return redirect(url_for('teachers_courses'))
+
+        if request.method == 'POST':
+            title = request.form.get('title')
+            description = request.form.get('description')
+            test_type = request.form.get('type')
+            order_index = request.form.get('order_index', 1)
+            instructions = request.form.get('instructions', '')
+            time_limit = request.form.get('time_limit', 60)
+            passing_score = request.form.get('passing_score', 70)
+            max_attempts = request.form.get('max_attempts', 1)
+            is_mandatory = request.form.get('is_mandatory') == 'on'
+            show_results = request.form.get('show_results') == 'on'
+
+            # Validate required fields
+            if not all([title, description, test_type]):
+                flash('Title, description, and type are required.', 'error')
+                return render_template('teacher_add_test.html',
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+            try:
+                # Insert new test
+                test_data = {
+                    'module_id': module_id,
+                    'title': title,
+                    'description': description,
+                    'type': test_type,
+                    'order_index': int(order_index),
+                    'instructions': instructions,
+                    'time_limit': int(time_limit),
+                    'passing_score': int(passing_score),
+                    'max_attempts': int(max_attempts),
+                    'is_mandatory': is_mandatory,
+                    'show_results': show_results,
+                    'is_active': True
+                }
+
+                supabase.table('tests').insert(test_data).execute()
+
+                flash(f'Test "{title}" added successfully!', 'success')
+                return redirect(url_for('teachers_module_tests', module_id=module_id))
+
+            except Exception as e:
+                flash(f'Error creating test: {str(e)}', 'error')
+                return render_template('teacher_add_test.html',
+                                     module=module,
+                                     course=course,
+                                     username=session.get('username'))
+
+        return render_template('teacher_add_test.html',
+                             module=module,
+                             course=course,
+                             username=session.get('username'))
+
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return redirect(url_for('teachers_courses'))
+
+
 def admin_edit_task(task_id):
     try:
         # Get task details
