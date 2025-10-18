@@ -6,16 +6,17 @@
     <title>RAVN - Advanced Learning Management System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
 
         .gradient-bg {
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            background: linear-gradient(135deg, #000000 0%, #000000 100%);
         }
 
         .hero-gradient {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background: linear-gradient(135deg, #111827 0%, #374151 100%);
         }
 
         .feature-card {
@@ -35,7 +36,7 @@
         }
 
         .gradient-text {
-            background: linear-gradient(135deg, #667eea, #764ba2, #f093fb);
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -59,7 +60,7 @@
 </head>
 <body class="bg-gray-50">
     <!-- Navigation -->
-    <nav class="bg-white/95 backdrop-blur-md shadow-sm sticky top-0 z-50">
+    <nav class="bg-white/95 backdrop-blur-md sticky top-0 z-50 shadow-md">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center h-16">
                 <!-- Logo -->
@@ -75,7 +76,6 @@
                         <a href="#features" class="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium transition-colors">Features</a>
                         <a href="#about" class="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium transition-colors">About</a>
                         <a href="#testimonials" class="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium transition-colors">Testimonials</a>
-                        <a href="#contact" class="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium transition-colors">Contact</a>
                     </div>
                 </div>
 
@@ -104,7 +104,6 @@
                 <a href="#features" class="text-gray-700 hover:text-indigo-600 block px-3 py-2 text-base font-medium">Features</a>
                 <a href="#about" class="text-gray-700 hover:text-indigo-600 block px-3 py-2 text-base font-medium">About</a>
                 <a href="#testimonials" class="text-gray-700 hover:text-indigo-600 block px-3 py-2 text-base font-medium">Testimonials</a>
-                <a href="#contact" class="text-gray-700 hover:text-indigo-600 block px-3 py-2 text-base font-medium">Contact</a>
                 <div class="pt-4 pb-3 border-t border-gray-200">
                     <div class="flex items-center px-3 space-x-4">
                         <a href="/login" class="text-gray-700 hover:text-indigo-600 text-base font-medium">Sign In</a>
@@ -116,7 +115,7 @@
     </nav>
 
     <!-- Hero Section -->
-    <section class="relative hero-gradient min-h-screen flex items-center justify-center overflow-hidden">
+    <section class="relative bg-white min-h-screen flex items-center justify-center overflow-hidden">
         <!-- Animated Background Elements -->
         <div class="absolute inset-0">
             <div class="absolute top-1/4 left-1/4 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
@@ -124,61 +123,46 @@
             <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-indigo-300/15 rounded-full blur-3xl animate-pulse" style="animation-delay: 4s;"></div>
         </div>
 
-        <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <div class="max-w-4xl mx-auto">
+        <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center flex items-center justify-between">
+            <div class="max-w-xl text-left">
                 <!-- Floating Badge -->
-                <div class="inline-flex items-center px-4 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-white text-sm font-medium mb-8 floating-animation">
+                <div class="inline-flex items-center px-4 py-2 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-sm font-medium mb-8 floating-animation">
                     <i class="fas fa-rocket mr-2"></i>
-                    Now with AI-powered learning recommendations
+                    Amazing Learning Platform
                 </div>
 
                 <!-- Main Headline -->
-                <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
+                <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
                     Transform Your
-                    <span class="block gradient-text">Learning Journey</span>
+                    <span class="block text-blue-600">Learning Journey</span>
                     with RAVN
                 </h1>
 
                 <!-- Subtitle -->
-                <p class="text-xl sm:text-2xl text-white/90 mb-8 max-w-3xl mx-auto leading-relaxed">
+                <p class="text-xl sm:text-2xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
                     The most advanced learning management system designed for modern education.
                     Create, manage, and track progress with our intelligent platform.
                 </p>
 
                 <!-- CTA Buttons -->
                 <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-                    <a href="/signup" class="group bg-white text-indigo-600 px-8 py-4 rounded-xl text-lg font-semibold shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300 flex items-center">
+                    <a href="/signup" class="group bg-blue-600 text-white px-8 py-4 rounded-xl text-lg font-semibold transform hover:-translate-y-1 transition-all duration-300 flex items-center">
                         Start Learning Today
                         <i class="fas fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
                     </a>
-                    <a href="#features" class="group border-2 border-white/30 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-white/10 transition-all duration-300 flex items-center">
+                    <a href="#features" class="group border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-xl text-lg font-semibold hover:bg-gray-100 transition-all duration-300 flex items-center">
                         <i class="fas fa-play mr-2"></i>
                         Watch Demo
                     </a>
                 </div>
 
-                <!-- Stats -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-2xl mx-auto">
-                    <div class="text-center">
-                        <div class="text-3xl sm:text-4xl font-bold text-white stats-counter">10,000+</div>
-                        <div class="text-white/80 text-sm sm:text-base">Active Students</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-3xl sm:text-4xl font-bold text-white stats-counter">500+</div>
-                        <div class="text-white/80 text-sm sm:text-base">Expert Instructors</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-3xl sm:text-4xl font-bold text-white stats-counter">1,200+</div>
-                        <div class="text-white/80 text-sm sm:text-base">Courses Available</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-3xl sm:text-4xl font-bold text-white stats-counter">98%</div>
-                        <div class="text-white/80 text-sm sm:text-base">Success Rate</div>
-                    </div>
-                </div>
+            </div>
+            <div class="hidden lg:block pr-12 rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+                <lottie-player src="{{ url_for('static', filename='css/sticker.json') }}" background="#FFFFFF" speed="1" style="width: 400px; height: 400px;" loop autoplay></lottie-player>
             </div>
         </div>
-
+    </section>
+             
         <!-- Scroll Indicator -->
         <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 animate-bounce">
             <i class="fas fa-chevron-down text-white/60 text-2xl"></i>
@@ -475,9 +459,6 @@
                     Get Started Free
                     <i class="fas fa-arrow-right ml-2"></i>
                 </a>
-                <a href="#contact" class="border-2 border-white/30 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-white/10 transition-all duration-300">
-                    Schedule Demo
-                </a>
             </div>
 
             <p class="text-white/70 text-sm mt-6">
@@ -486,96 +467,6 @@
         </div>
     </section>
 
-    <!-- Contact Section -->
-    <section id="contact" class="py-20 bg-gray-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-16">
-                <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-                    Get in <span class="gradient-text">Touch</span>
-                </h2>
-                <p class="text-xl text-gray-600 max-w-3xl mx-auto">
-                    Have questions about RAVN? We'd love to hear from you.
-                </p>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <!-- Contact Info -->
-                <div class="lg:col-span-1">
-                    <div class="space-y-8">
-                        <div class="flex items-start space-x-4">
-                            <div class="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-map-marker-alt text-indigo-600"></i>
-                            </div>
-                            <div>
-                                <h4 class="font-semibold text-gray-900 mb-2">Office</h4>
-                                <p class="text-gray-600">123 Learning Street<br>Education City, EC 12345</p>
-                            </div>
-                        </div>
-
-                        <div class="flex items-start space-x-4">
-                            <div class="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-envelope text-indigo-600"></i>
-                            </div>
-                            <div>
-                                <h4 class="font-semibold text-gray-900 mb-2">Email</h4>
-                                <p class="text-gray-600">hello@ravn.com<br>support@ravn.com</p>
-                            </div>
-                        </div>
-
-                        <div class="flex items-start space-x-4">
-                            <div class="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-phone text-indigo-600"></i>
-                            </div>
-                            <div>
-                                <h4 class="font-semibold text-gray-900 mb-2">Phone</h4>
-                                <p class="text-gray-600">+1 (555) 123-4567<br>+1 (555) 987-6543</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Contact Form -->
-                <div class="lg:col-span-2">
-                    <form class="bg-white rounded-2xl p-8 shadow-lg">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">First Name</label>
-                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors" placeholder="John">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
-                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors" placeholder="Doe">
-                            </div>
-                        </div>
-
-                        <div class="mb-6">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                            <input type="email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors" placeholder="john@example.com">
-                        </div>
-
-                        <div class="mb-6">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Subject</label>
-                            <select class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors">
-                                <option>General Inquiry</option>
-                                <option>Technical Support</option>
-                                <option>Sales Question</option>
-                                <option>Partnership</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-6">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Message</label>
-                            <textarea rows="4" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors" placeholder="Tell us how we can help..."></textarea>
-                        </div>
-
-                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-lg text-lg font-semibold transition-colors shadow-lg hover:shadow-xl">
-                            Send Message
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </section>
 
     <!-- Footer -->
     <footer class="bg-gray-900 text-white py-16">
