@@ -2434,7 +2434,7 @@ def teachers_add_module(course_id):
 
     except Exception as e:
         flash(f'An error occurred: {str(e)}', 'error')
-        return redirect(url_for('teacher_courses'))
+        return redirect(url_for('teachers_courses'))
 
 
 @app.route('/teachers/modules/edit/<module_id>', methods=['GET', 'POST'])
@@ -2501,7 +2501,7 @@ def teachers_edit_module(module_id):
 
     except Exception as e:
         flash(f'An error occurred: {str(e)}', 'error')
-        return redirect(url_for('teacher_courses'))
+        return redirect(url_for('teachers_courses'))
 
 
 @app.route('/teachers/modules/<module_id>/tasks')
@@ -2540,7 +2540,7 @@ def teachers_module_tasks(module_id):
 
     except Exception as e:
         flash(f'An error occurred: {str(e)}', 'error')
-        return redirect(url_for('teacher_courses'))
+        return redirect(url_for('teachers_courses'))
 
 
 @app.route('/teachers/tasks/edit/<task_id>', methods=['GET', 'POST'])
@@ -2675,7 +2675,7 @@ def teachers_edit_task(task_id):
                 supabase.table('tasks').update(update_data).eq('id', task_id).execute()
 
                 flash(f'Task "{title}" updated successfully!', 'success')
-                return redirect(url_for('teacher_module_tasks', module_id=module['id']))
+                return redirect(url_for('teachers_module_tasks', module_id=module['id']))
 
             except Exception as e:
                 flash(f'Error updating task: {str(e)}', 'error')
@@ -2695,7 +2695,7 @@ def teachers_edit_task(task_id):
 
     except Exception as e:
         flash(f'An error occurred: {str(e)}', 'error')
-        return redirect(url_for('teacher_courses'))
+        return redirect(url_for('teachers_courses'))
 
 
 @app.route('/teachers/modules/<module_id>/tasks/add', methods=['GET', 'POST'])
@@ -2816,7 +2816,7 @@ def teachers_add_task(module_id):
                 supabase.table('tasks').insert(task_data).execute()
 
                 flash(f'Task "{title}" added successfully!', 'success')
-                return redirect(url_for('teacher_module_tasks', module_id=module_id))
+                return redirect(url_for('teachers_module_tasks', module_id=module_id))
 
             except Exception as e:
                 flash(f'Error creating task: {str(e)}', 'error')
@@ -2832,7 +2832,7 @@ def teachers_add_task(module_id):
 
     except Exception as e:
         flash(f'An error occurred: {str(e)}', 'error')
-        return redirect(url_for('teacher_courses'))
+        return redirect(url_for('teachers_courses'))
 
 
 @app.route('/admin/users')
