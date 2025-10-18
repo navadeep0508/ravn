@@ -276,7 +276,7 @@ def index():
             # Render a fallback dashboard with minimal data
             return render_template('dashboard.html', username=username, courses=[], enrolled_courses=0, completed_courses=0, total_hours=0, enrolled_course_details=[], average_score=0, completion_rate=0, leaderboard_rank='N/A', upcoming_tasks=[], recent_activity=[])
 
-    return redirect(url_for('login'))
+    return redirect(url_for('landing'))
 
 
 @app.route('/signup', methods=['GET', 'POST'])
