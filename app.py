@@ -2264,7 +2264,7 @@ def teachers_grading():
                         'task_title': task['title'],
                         'module_title': module['title'],
                         'course_title': course['title'],
-                        'submitted_at': submission['submitted_at'],
+                        'submitted_at': submission.get('submitted_at', 'Unknown'),
                         'status': submission.get('status', 'submitted'),
                         'grade': submission.get('grade'),
                         'file_name': submission.get('file_name', ''),
@@ -2420,7 +2420,7 @@ def teachers_add_module(course_id):
                 }).execute()
 
                 flash(f'Module "{title}" added successfully!', 'success')
-                return redirect(url_for('teacher_course_modules', course_id=course_id))
+                return redirect(url_for('teachers_course_modules', course_id=course_id))
 
             except Exception as e:
                 flash(f'Error creating module: {str(e)}', 'error')
@@ -2485,7 +2485,7 @@ def teachers_edit_module(module_id):
                 }).eq('id', module_id).execute()
 
                 flash(f'Module "{title}" updated successfully!', 'success')
-                return redirect(url_for('teachers_course_modules', course_id=course['id']))
+                return redirect(url_for('admin_course_modules', course_id=course['id']))
 
             except Exception as e:
                 flash(f'Error updating module: {str(e)}', 'error')
@@ -3271,7 +3271,7 @@ def admin_add_module(course_id):
                 supabase.rpc('enable_rls_for_admin', params={}).execute()
 
                 flash(f'Module "{title}" added successfully!', 'success')
-                return redirect(url_for('teachers_course_modules', course_id=course_id))
+                return redirect(url_for('admin_course_modules', course_id=course_id))
 
             except Exception as e:
                 # Make sure to re-enable RLS if there's an error
@@ -3334,7 +3334,7 @@ def admin_edit_module(module_id):
                 }).eq('id', module_id).execute()
 
                 flash(f'Module "{title}" updated successfully!', 'success')
-                return redirect(url_for('teachers_course_modules', course_id=course['id']))
+                return redirect(url_for('admin_course_modules', course_id=course['id']))
 
             except Exception as e:
                 flash(f'Error updating module: {str(e)}', 'error')
@@ -4100,7 +4100,7 @@ def admin_grading():
                         'task_title': task['title'],
                         'module_title': module['title'],
                         'course_title': course['title'],
-                        'submitted_at': submission['submitted_at'],
+                        'submitted_at': submission.get('submitted_at', 'Unknown'),
                         'status': submission.get('status', 'submitted'),
                         'grade': submission.get('grade'),
                         'file_name': submission.get('file_name', ''),
@@ -4455,7 +4455,7 @@ def course_analytics(course_id):
                         'student_email': student['email'],
                         'task_title': task['title'],
                         'module_title': module_title,
-                        'submitted_at': submission['submitted_at'],
+                        'submitted_at': submission.get('submitted_at', 'Unknown'),
                         'file_name': submission.get('file_name', ''),
                         'file_url': submission.get('file_url', ''),
                         'grade': submission.get('grade'),
