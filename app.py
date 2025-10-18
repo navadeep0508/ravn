@@ -5709,6 +5709,488 @@ def contact():
     return render_template('contact.html')
 
 
+@app.route('/chat')
+@login_required
+def chat():
+    """Main chat interface"""
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+
+        # Get user's conversations
+        if user_role == 'student':
+            # Students can chat with their teachers
+            conversations = get_student_conversations(user_id)
+            teachers = get_available_teachers_for_student(user_id)
+            students = []  # Students don't need to select other students
+        else:  # teacher or admin
+            # Teachers can chat with their students
+            conversations = get_teacher_conversations(user_id)
+            students = get_available_students_for_teacher(user_id)
+            teachers = []  # Teachers don't need to select other teachers
+
+        return render_template('chat.html',
+                             conversations=conversations,
+                             teachers=teachers,
+                             students=students,
+                             current_user={'id': user_id, 'role': user_role, 'username': session.get('username')})
+
+    except Exception as e:
+        flash(f'Error loading chat: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/chat/<conversation_id>')
+@login_required
+def chat_conversation(conversation_id):
+    """Chat conversation with specific user"""
+    try:
+        user_id = session.get('user_id')
+        user_role = session.get('role')
+
+        # Get conversation details and messages
+        conversation = get_conversation(conversation_id, user_id)
+        if not conversation:
+            flash('Conversation not found', 'error')
+            return redirect(url_for('chat'))
+
+        messages = get_conversation_messages(conversation_id)
+
+        # Mark messages as read
+        mark_messages_as_read(conversation_id, user_id)
+
+        return render_template('chat_conversation.html',
+                             conversation=conversation,
+                             messages=messages,
+                             current_user={'id': user_id, 'role': user_role, 'username': session.get('username')})
+
+    except Exception as e:
+        flash(f'Error loading conversation: {str(e)}', 'error')
+        return redirect(url_for('chat'))
+
+
+@app.route('/api/chat/send_message', methods=['POST'])
+@login_required
+def send_message():
+    """API endpoint for sending messages"""
+    try:
+        data = request.get_json()
+        conversation_id = data.get('conversation_id')
+        message_content = data.get('message')
+
+        if not conversation_id or not message_content:
+            return jsonify({'success': False, 'message': 'Missing data'}), 400
+
+        user_id = session.get('user_id')
+
+        # Save message to database (mock implementation)
+        message_id = save_message(conversation_id, user_id, message_content)
+
+        # Get the message details for response
+        message = get_message(message_id)
+
+        return jsonify({
+            'success': True,
+            'message': {
+                'id': message['id'],
+                'content': message['content'],
+                'sender_id': message['sender_id'],
+                'timestamp': message['timestamp'].isoformat() if hasattr(message['timestamp'], 'isoformat') else str(message['timestamp']),
+                'sender_name': message['sender_name']
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/chat/create_conversation', methods=['POST'])
+@login_required
+def create_new_conversation():
+    """API endpoint for creating a new conversation"""
+    try:
+        data = request.get_json()
+        participant_ids = data.get('participant_ids', [])
+        initial_message = data.get('initial_message')
+
+        if not participant_ids:
+            return jsonify({'success': False, 'message': 'No participants specified'}), 400
+
+        user_id = session.get('user_id')
+
+        # Create conversation
+        conversation_id = create_conversation(user_id, participant_ids)
+
+        if not conversation_id:
+            return jsonify({'success': False, 'message': 'Failed to create conversation'}), 500
+
+        # Send initial message if provided
+        if initial_message:
+            save_message(conversation_id, user_id, initial_message)
+
+        return jsonify({
+            'success': True,
+            'conversation_id': conversation_id,
+            'message': 'Conversation created successfully'
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    """API endpoint for getting messages"""
+    try:
+        user_id = session.get('user_id')
+
+        # Verify user has access to this conversation
+        if not can_access_conversation(conversation_id, user_id):
+            return jsonify({'success': False, 'message': 'Access denied'}), 403
+
+        messages = get_conversation_messages(conversation_id)
+
+        return jsonify({
+            'success': True,
+            'messages': [
+                {
+                    'id': msg['id'],
+                    'content': msg['content'],
+                    'sender_id': msg['sender_id'],
+                    'timestamp': msg['timestamp'].isoformat() if hasattr(msg['timestamp'], 'isoformat') else str(msg['timestamp']),
+                    'sender_name': msg['sender_name'],
+                    'is_read': msg.get('is_read', False)
+                }
+                for msg in messages
+            ]
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+# Helper functions for chat functionality (real database implementations)
+def get_student_conversations(student_id):
+    """Get conversations for a student"""
+    try:
+        # Get conversations where student is a participant
+        conversations_result = supabase.table('conversation_participants').select('''
+            conversation_id,
+            conversations!inner(*)
+        ''').eq('user_id', student_id).execute()
+
+        conversations = []
+        for item in conversations_result.data:
+            conv = item['conversations']
+
+            # Get the other participant (teacher) for this conversation
+            other_participant_result = supabase.table('conversation_participants').select('''
+                user_id,
+                profiles!conversation_participants_user_id_fkey(name)
+            ''').eq('conversation_id', conv['id']).neq('user_id', student_id).execute()
+
+            if other_participant_result.data:
+                participant = other_participant_result.data[0]['profiles']
+
+                # Get last message for this conversation
+                last_message_result = supabase.table('messages').select('''
+                    content,
+                    created_at,
+                    profiles!messages_sender_id_fkey(name)
+                ''').eq('conversation_id', conv['id']).order('created_at', desc=True).limit(1).execute()
+
+                last_message = last_message_result.data[0] if last_message_result.data else None
+
+                # Get unread count for this participant
+                unread_result = supabase.table('conversation_participants').select('unread_count').eq('conversation_id', conv['id']).eq('user_id', student_id).execute()
+                unread_count = unread_result.data[0]['unread_count'] if unread_result.data else 0
+
+                conversations.append({
+                    'id': conv['id'],
+                    'teacher_id': participant['id'],
+                    'teacher_name': participant['name'],
+                    'teacher_avatar': f"https://ui-avatars.com/api/?name={participant['name']}&background=667eea&color=fff&size=40",
+                    'last_message': last_message['content'] if last_message else 'No messages yet',
+                    'last_message_time': last_message['created_at'] if last_message else conv['created_at'],
+                    'unread_count': unread_count
+                })
+
+        return conversations
+
+    except Exception as e:
+        print(f"Error getting student conversations: {str(e)}")
+        return []
+
+
+def get_teacher_conversations(teacher_id):
+    """Get conversations for a teacher"""
+    try:
+        # Get conversations where teacher is a participant
+        conversations_result = supabase.table('conversation_participants').select('''
+            conversation_id,
+            conversations!inner(*)
+        ''').eq('user_id', teacher_id).execute()
+
+        conversations = []
+        for item in conversations_result.data:
+            conv = item['conversations']
+
+            # Get the other participant (student) for this conversation
+            other_participant_result = supabase.table('conversation_participants').select('''
+                user_id,
+                profiles!conversation_participants_user_id_fkey(name)
+            ''').eq('conversation_id', conv['id']).neq('user_id', teacher_id).execute()
+
+            if other_participant_result.data:
+                participant = other_participant_result.data[0]['profiles']
+
+                # Get last message for this conversation
+                last_message_result = supabase.table('messages').select('''
+                    content,
+                    created_at,
+                    profiles!messages_sender_id_fkey(name)
+                ''').eq('conversation_id', conv['id']).order('created_at', desc=True).limit(1).execute()
+
+                last_message = last_message_result.data[0] if last_message_result.data else None
+
+                # Get unread count for this participant
+                unread_result = supabase.table('conversation_participants').select('unread_count').eq('conversation_id', conv['id']).eq('user_id', teacher_id).execute()
+                unread_count = unread_result.data[0]['unread_count'] if unread_result.data else 0
+
+                conversations.append({
+                    'id': conv['id'],
+                    'student_id': participant['id'],
+                    'student_name': participant['name'],
+                    'student_avatar': f"https://ui-avatars.com/api/?name={participant['name']}&background=764ba2&color=fff&size=40",
+                    'last_message': last_message['content'] if last_message else 'No messages yet',
+                    'last_message_time': last_message['created_at'] if last_message else conv['created_at'],
+                    'unread_count': unread_count
+                })
+
+        return conversations
+
+    except Exception as e:
+        print(f"Error getting teacher conversations: {str(e)}")
+        return []
+
+
+def get_conversation(conversation_id, user_id):
+    """Get conversation details"""
+    try:
+        # Check if user is a participant in this conversation
+        participant_result = supabase.table('conversation_participants').select('*').eq('conversation_id', conversation_id).eq('user_id', user_id).execute()
+
+        if not participant_result.data:
+            return None
+
+        # Get conversation details
+        conv_result = supabase.table('conversations').select('*').eq('id', conversation_id).execute()
+
+        if not conv_result.data:
+            return None
+
+        return conv_result.data[0]
+
+    except Exception as e:
+        print(f"Error getting conversation: {str(e)}")
+        return None
+
+
+def get_conversation_messages(conversation_id):
+    """Get messages for a conversation"""
+    try:
+        # Get messages with sender information
+        messages_result = supabase.table('messages').select('''
+            id,
+            content,
+            sender_id,
+            created_at,
+            edited_at,
+            message_type,
+            profiles!messages_sender_id_fkey(name)
+        ''').eq('conversation_id', conversation_id).eq('is_deleted', False).order('created_at', asc=True).execute()
+
+        messages = []
+        for msg in messages_result.data:
+            messages.append({
+                'id': msg['id'],
+                'content': msg['content'],
+                'sender_id': msg['sender_id'],
+                'sender_name': msg['profiles']['name'],
+                'timestamp': msg['created_at'],
+                'is_read': True  # In real implementation, check read receipts
+            })
+
+        return messages
+
+    except Exception as e:
+        print(f"Error getting conversation messages: {str(e)}")
+        return []
+
+
+def save_message(conversation_id, sender_id, content, message_type='text'):
+    """Save a message to database"""
+    try:
+        message_data = {
+            'conversation_id': conversation_id,
+            'sender_id': sender_id,
+            'content': content,
+            'message_type': message_type
+        }
+
+        result = supabase.table('messages').insert(message_data).execute()
+
+        if result.data and len(result.data) > 0:
+            return result.data[0]['id']
+
+        return None
+
+    except Exception as e:
+        print(f"Error saving message: {str(e)}")
+        return None
+
+
+def get_message(message_id):
+    """Get message details"""
+    try:
+        result = supabase.table('messages').select('''
+            id,
+            content,
+            sender_id,
+            created_at,
+            message_type,
+            profiles!messages_sender_id_fkey(name)
+        ''').eq('id', message_id).execute()
+
+        if result.data and len(result.data) > 0:
+            msg = result.data[0]
+            return {
+                'id': msg['id'],
+                'content': msg['content'],
+                'sender_id': msg['sender_id'],
+                'timestamp': msg['created_at'],
+                'sender_name': msg['profiles']['name']
+            }
+
+        return None
+
+    except Exception as e:
+        print(f"Error getting message: {str(e)}")
+        return None
+
+
+def can_access_conversation(conversation_id, user_id):
+    """Check if user can access conversation"""
+    try:
+        result = supabase.table('conversation_participants').select('id').eq('conversation_id', conversation_id).eq('user_id', user_id).execute()
+        return len(result.data) > 0
+
+    except Exception as e:
+        print(f"Error checking conversation access: {str(e)}")
+        return False
+
+
+def mark_messages_as_read(conversation_id, user_id):
+    """Mark messages as read for a user"""
+    try:
+        # Update the participant's last_read_at and reset unread_count
+        supabase.table('conversation_participants').update({
+            'last_read_at': 'now()',
+            'unread_count': 0
+        }).eq('conversation_id', conversation_id).eq('user_id', user_id).execute()
+
+        return True
+
+    except Exception as e:
+        print(f"Error marking messages as read: {str(e)}")
+        return False
+
+
+def create_conversation(creator_id, participant_ids, title=None):
+    """Create a new conversation"""
+    try:
+        # Create conversation
+        conversation_data = {
+            'created_by': creator_id,
+            'title': title
+        }
+
+        conv_result = supabase.table('conversations').insert(conversation_data).execute()
+
+        if not conv_result.data:
+            return None
+
+        conversation_id = conv_result.data[0]['id']
+
+        # Add participants (creator + others)
+        participants_data = []
+        for participant_id in [creator_id] + participant_ids:
+            participants_data.append({
+                'conversation_id': conversation_id,
+                'user_id': participant_id
+            })
+
+        supabase.table('conversation_participants').insert(participants_data).execute()
+
+        return conversation_id
+
+    except Exception as e:
+        print(f"Error creating conversation: {str(e)}")
+        return None
+
+
+def get_available_teachers_for_student(student_id):
+    """Get teachers that a student can message"""
+    try:
+        # Get teachers from courses where the student is enrolled
+        enrolled_courses_result = supabase.table('enrollments').select('''
+            course_id,
+            courses!inner(teacher_uuid, title)
+        ''').eq('student_id', student_id).eq('status', 'active').execute()
+
+        teachers = []
+        for item in enrolled_courses_result.data:
+            course = item['courses']
+            if course['teacher_uuid']:
+                # Check if teacher exists in profiles
+                teacher_result = supabase.table('profiles').select('id, name').eq('id', course['teacher_uuid']).execute()
+                if teacher_result.data:
+                    teachers.append({
+                        'id': course['teacher_uuid'],
+                        'name': teacher_result.data[0]['name'],
+                        'course_name': course['title']
+                    })
+
+        return teachers
+
+    except Exception as e:
+        print(f"Error getting available teachers: {str(e)}")
+        return []
+
+
+def get_available_students_for_teacher(teacher_id):
+    """Get students that a teacher can message"""
+    try:
+        # Get students from courses taught by this teacher
+        teacher_courses_result = supabase.table('courses').select('''
+            id,
+            title,
+            enrollments!inner(student_id, profiles!enrollments_student_id_fkey(name))
+        ''').eq('teacher_uuid', teacher_id).execute()
+
+        students = []
+        for course in teacher_courses_result.data:
+            for enrollment in course['enrollments']:
+                student = enrollment['profiles']
+                students.append({
+                    'id': enrollment['student_id'],
+                    'name': student['name'],
+                    'course_name': course['title']
+                })
+
+        return students
+
+    except Exception as e:
+        print(f"Error getting available students: {str(e)}")
+        return []
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
 

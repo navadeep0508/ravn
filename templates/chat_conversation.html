@@ -1,0 +1,336 @@
+{% extends "dashboard_base.html" %}
+
+{% block page_title %}Chat - {{ conversation.participants|join(', ') }}{% endblock %}
+
+{% block dashboard_content %}
+<!-- Chat Header -->
+<div class="mb-8">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+            <a href="{{ url_for('chat') }}" class="text-gray-600 hover:text-gray-800 transition-colors">
+                <i class="fas fa-arrow-left mr-2"></i>
+                Back to Messages
+            </a>
+        </div>
+        <div class="flex items-center space-x-4">
+            <button id="newMessageBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center">
+                <i class="fas fa-plus mr-2"></i>
+                New Message
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden h-[calc(100vh-200px)] flex flex-col">
+    <!-- Chat Header -->
+    <div class="p-4 border-b border-gray-200">
+        <div class="flex items-center space-x-3">
+            <img id="chatAvatar" src="https://ui-avatars.com/api/?name={{ current_user.username }}&background=667eea&color=fff&size=40"
+                 alt="{{ current_user.username }}" class="w-10 h-10 rounded-full">
+            <div>
+                <h3 id="chatName" class="font-semibold text-gray-900">{{ current_user.username }}</h3>
+                <p id="chatStatus" class="text-sm text-gray-500">Online</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages Area -->
+    <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
+        {% for message in messages %}
+        <div class="flex items-start space-x-3 {{ 'justify-end' if message.sender_id == current_user.id else 'justify-start' }}">
+            {% if message.sender_id != current_user.id %}
+            <img src="https://ui-avatars.com/api/?name={{ message.sender_name }}&background=764ba2&color=fff&size=32"
+                 alt="{{ message.sender_name }}" class="w-8 h-8 rounded-full flex-shrink-0">
+            {% endif %}
+
+            <div class="message-bubble px-4 py-2 max-w-xs lg:max-w-md {{ 'message-sent' if message.sender_id == current_user.id else 'message-received' }}">
+                <p class="text-sm">{{ message.content }}</p>
+                <p class="text-xs mt-1 opacity-75">{{ message.timestamp | format_datetime }}</p>
+            </div>
+
+            {% if message.sender_id == current_user.id %}
+            <img src="https://ui-avatars.com/api/?name={{ current_user.username }}&background=667eea&color=fff&size=32"
+                 alt="{{ current_user.username }}" class="w-8 h-8 rounded-full flex-shrink-0">
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Message Input -->
+    <div class="p-4 border-t border-gray-200">
+        <div class="flex space-x-3">
+            <div class="flex-1">
+                <textarea id="messageText" rows="1" placeholder="Type your message..."
+                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"></textarea>
+            </div>
+            <button id="sendMessageBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- New Message Modal -->
+<div id="newMessageModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900">Start New Conversation</h3>
+            <button id="closeModalBtn" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <div class="space-y-4">
+        {% if current_user.role == 'student' %}
+        <!-- Students can message their teachers -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Select Teacher</label>
+            <select id="recipientSelect" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="">Choose a teacher...</option>
+                {% for teacher in teachers %}
+                <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% else %}
+        <!-- Teachers can message their students -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Select Student</label>
+            <select id="recipientSelect" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="">Choose a student...</option>
+                {% for student in students %}
+                <option value="{{ student.id }}">{{ student.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Initial Message</label>
+                <textarea id="initialMessage" rows="3" placeholder="Type your first message..."
+                          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+            </div>
+
+            <div class="flex space-x-3">
+                <button id="cancelNewMessageBtn" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                    Cancel
+                </button>
+                <button id="startConversationBtn" class="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                    Start Conversation
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Custom scrollbar for messages */
+#messagesContainer::-webkit-scrollbar {
+    width: 6px;
+}
+
+#messagesContainer::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+#messagesContainer::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+#messagesContainer::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Message bubbles */
+.message-bubble {
+    word-wrap: break-word;
+    border-radius: 18px;
+    padding: 12px 16px;
+}
+
+.message-sent {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    margin-left: auto;
+    border-radius: 18px 18px 4px 18px;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+}
+
+.message-received {
+    background: #f1f5f9;
+    color: #374151;
+    margin-right: auto;
+    border-radius: 18px 18px 18px 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.message-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const conversationId = '{{ conversation.id }}';
+    const messagesContainer = document.getElementById('messagesContainer');
+    const messageText = document.getElementById('messageText');
+
+    // Auto-scroll to bottom on load
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    // Send message
+    document.getElementById('sendMessageBtn').addEventListener('click', function() {
+        sendMessage();
+    });
+
+    // Enter key to send message
+    messageText.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    // New message modal
+    document.getElementById('newMessageBtn').addEventListener('click', function() {
+        document.getElementById('newMessageModal').classList.remove('hidden');
+    });
+
+    document.getElementById('closeModalBtn').addEventListener('click', function() {
+        document.getElementById('newMessageModal').classList.add('hidden');
+    });
+
+    document.getElementById('cancelNewMessageBtn').addEventListener('click', function() {
+        document.getElementById('newMessageModal').classList.add('hidden');
+        document.getElementById('initialMessage').value = '';
+        document.getElementById('recipientSelect').value = '';
+    });
+
+    // Start new conversation
+    document.getElementById('startConversationBtn').addEventListener('click', function() {
+        const recipientId = document.getElementById('recipientSelect').value;
+        const initialMessage = document.getElementById('initialMessage').value;
+
+        if (!recipientId || !initialMessage.trim()) {
+            alert('Please select a recipient and enter a message');
+            return;
+        }
+
+        // Create new conversation via API
+        fetch('/api/chat/create_conversation', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                participant_ids: [recipientId],
+                initial_message: initialMessage
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Close modal and reset form
+                document.getElementById('newMessageModal').classList.add('hidden');
+                document.getElementById('initialMessage').value = '';
+                document.getElementById('recipientSelect').value = '';
+
+                // Optionally redirect to the new conversation
+                window.location.href = `/chat/${data.conversation_id}`;
+            } else {
+                alert('Error creating conversation: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error creating conversation');
+        });
+    });
+
+    // Send message function
+    function sendMessage() {
+        const message = messageText.value.trim();
+
+        if (!message) {
+            return;
+        }
+
+        fetch('/api/chat/send_message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                conversation_id: conversationId,
+                message: message
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Add message to UI
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'flex items-start space-x-3 justify-end';
+
+                const messageContent = `
+                    <div class="message-bubble message-sent">
+                        <p class="text-sm">${data.message.content}</p>
+                        <p class="text-xs mt-1 opacity-75">${formatTime(data.message.timestamp)}</p>
+                    </div>
+                `;
+
+                messageDiv.innerHTML = messageContent;
+                messagesContainer.appendChild(messageDiv);
+
+                // Clear input
+                messageText.value = '';
+
+                // Scroll to bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            } else {
+                alert('Error sending message: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error sending message');
+        });
+    }
+
+    // Format time
+    function formatTime(timestamp) {
+        if (!timestamp) return '';
+
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diff = now - date;
+
+        if (diff < 60000) { // Less than 1 minute
+            return 'Just now';
+        } else if (diff < 3600000) { // Less than 1 hour
+            return `${Math.floor(diff / 60000)}m ago`;
+        } else if (diff < 86400000) { // Less than 1 day
+            return `${Math.floor(diff / 3600000)}h ago`;
+        } else {
+            return date.toLocaleDateString();
+        }
+    }
+
+    // Auto-scroll when new messages arrive
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+        });
+    });
+
+    observer.observe(messagesContainer, {
+        childList: true
+    });
+});
+</script>
+{% endblock %}

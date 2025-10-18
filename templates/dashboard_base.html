@@ -35,13 +35,16 @@
                 <i class="fas fa-file-upload mr-3 text-gray-500"></i>
                 <span>My Submissions</span>
             </a>
+            <a href="{{ url_for('chat') }}" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100 {% if request.endpoint == 'chat' %} bg-gray-200 {% endif %}">
+                <i class="fas fa-comments mr-3 text-gray-500"></i>
+                <span>Messages</span>
+                {% if unread_count is defined and unread_count > 0 %}
+                <span class="ml-auto bg-red-500 text-white text-xs rounded-full px-2 py-1">{{ unread_count }}</span>
+                {% endif %}
+            </a>
             <a href="#" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100 {% if request.endpoint == 'tasks' %} bg-gray-200 {% endif %}">
                 <i class="fas fa-tasks mr-3 text-gray-500"></i>
                 <span>Tasks</span>
-            </a>
-            <a href="#" class="flex items-center px-6 py-3 text-gray-700 hover:bg-gray-100 {% if request.endpoint == 'messages' %} bg-gray-200 {% endif %}">
-                <i class="fas fa-comment-dots mr-3 text-gray-500"></i>
-                <span>Messages</span>
             </a>
             
 
